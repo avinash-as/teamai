@@ -1057,10 +1057,13 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
   const [activeBot, setActiveBot] = useState(null);
   const [showAgents, setShowAgents] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [toast, setToast] = useState({msg:"",type:"success"});
+  const [rateLimitUntil, setRateLimitUntil] = useState(0);
   const [error, setError] = useState("");
   const [workingDots, setWorkingDots] = useState(0);
   const [lastIdea, setLastIdea] = useState("");
   const endRef = useRef(null);
+  const inputRef = useRef(null);
 
   const activeTeam = team || (teams && teams[0]) || null;
   const bots = (activeTeam?.bots || []).filter(b => (Storage.getAgentConfigs()[b.id]?.enabled ?? true));
@@ -1101,6 +1104,30 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
     setConversations(Storage.getConversations());
     if (activeId === id) { setActiveId(null); setMessages([]); }
   };
+
+  const exportConversation = () => {
+    const conv = Storage.getConversations().find(c=>c.id===activeId);
+    if (!conv || !conv.messages?.length) return;
+    const md = `# ${conv.title || "Conversation"}\n\n` +
+      conv.messages.map(m => `## ${m.role === "user" ? "User" : "Assistant"}\n\n${m.content}\n`).join("\n---\n\n");
+    const blob = new Blob([md], {type:"text/markdown"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${(conv.title||"conversation").replace(/[^a-z0-9]/gi,"_")}.md`;
+    a.click(); URL.revokeObjectURL(url);
+    setToast({msg:"Exported as Markdown",type:"success"});
+  };
+
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); newChat(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === "/") { e.preventDefault(); inputRef.current?.focus(); }
+      if (e.key === "Escape") { setActiveBot(null); }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const build = async (idea) => {
     if (!idea.trim() || !activeTeam) return;
@@ -1174,8 +1201,10 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
   };
 
   const submit = () => {
+    if (Date.now() < rateLimitUntil) { setToast({msg:"Please wait a moment before sending again",type:"error"}); return; }
     if (!input.trim() || phase === "thinking" || phase === "synthesizing") return;
     const q = input.trim(); setInput("");
+    setRateLimitUntil(Date.now() + 1500);
     build(q);
   };
 
@@ -1195,9 +1224,11 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
 
   return (
     <div style={{display:"flex",height:"100vh",overflow:"hidden"}}>
+      {toast.msg && <Toast msg={toast.msg} type={toast.type} onHide={()=>setToast({msg:"",type:"success"})}/>}
       {/* Conversation sidebar */}
       <div style={{width:260,borderRight:"1px solid var(--border)",background:"var(--surface)",display:"flex",flexDirection:"column",padding:12,flexShrink:0}}>
-        <button className="build-btn" style={{width:"100%",justifyContent:"center",marginBottom:12}} onClick={newChat}>+ New chat</button>
+        <button className="build-btn" style={{width:"100%",justifyContent:"center",marginBottom:8}} onClick={newChat}>+ New chat</button>
+        <button className="act-btn act-btn-sec" style={{width:"100%",justifyContent:"center",marginBottom:12,fontSize:".7rem"}} onClick={exportConversation}>⬇ Export chat</button>
         <input className="finp" placeholder="Search conversations..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
           style={{marginBottom:8,fontSize:".75rem",padding:"6px 10px"}}/>
         <div style={{flex:1,overflowY:"auto"}}>
@@ -1231,7 +1262,12 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
             <div style={{textAlign:"center",marginTop:"15vh",color:"var(--muted)"}}>
               <div style={{fontSize:"2.4rem",marginBottom:12}}>🧠</div>
               <div style={{fontFamily:"var(--font-h)",fontWeight:800,fontSize:"1.4rem",marginBottom:6}}>TeamAI</div>
-              <div style={{fontFamily:"var(--font-m)",fontSize:".8rem"}}>// ask anything · describe what to build · pick a team</div>
+              <div style={{fontFamily:"var(--font-m)",fontSize:".8rem",marginBottom:20}}>// ask anything · describe what to build · pick a team</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",maxWidth:600,margin:"0 auto"}}>
+                {["Build a complete authentication system","Create a responsive dashboard using React","Build a complete e-commerce website","Research best tech stack for my startup"].map((p,i)=>(
+                  <span key={i} className="chip" onClick={()=>setInput(p)}>{p}</span>
+                ))}
+              </div>
             </div>
           )}
           {messages.map((m,i)=>(
@@ -1279,14 +1315,14 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
         {/* Input */}
         <div style={{borderTop:"1px solid var(--border)",padding:"12px 20px",background:"var(--surface)"}}>
           <div style={{display:"flex",gap:8,alignItems:"flex-end",maxWidth:900,margin:"0 auto"}}>
-            <textarea className="chat-inp" rows={2} placeholder="Describe what to build or ask anything..."
+            <textarea ref={inputRef} className="chat-inp" rows={2} placeholder="Describe what to build or ask anything..."
               value={input} onChange={e=>setInput(e.target.value)}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
               style={{flex:1}}/>
-            <button className="send-btn" onClick={submit} disabled={!input.trim()||phase==="thinking"||phase==="synthesizing"}>Send</button>
+            <button className="send-btn" onClick={submit} disabled={!input.trim()||phase==="thinking"||phase==="synthesizing"} aria-label="Send message">Send</button>
           </div>
           <div style={{textAlign:"center",marginTop:6,fontSize:".6rem",color:"var(--muted2)",fontFamily:"var(--font-m)"}}>
-            Enter to send · Shift+Enter for new line · {bots.length} agents ready
+            Enter send � Shift+Enter newline � Ctrl+K new chat � Ctrl+/ focus � Esc close agent
           </div>
         </div>
       </div>
