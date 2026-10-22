@@ -129,6 +129,8 @@ const Storage = {
   getConversations:()=>{try{return JSON.parse(localStorage.getItem("teamai_conversations")||"[]")}catch{return[]}},
   saveConversation:(c)=>{const cs=Storage.getConversations().filter(x=>x.id!==c.id);localStorage.setItem("teamai_conversations",JSON.stringify([c,...cs].slice(0,50)))},
   deleteConversation:(id)=>{localStorage.setItem("teamai_conversations",JSON.stringify(Storage.getConversations().filter(c=>c.id!==id)))},
+  getAgentConfigs:()=>{try{return JSON.parse(localStorage.getItem("teamai_agent_configs")||"{}")}catch{return{}}},
+  saveAgentConfig:(id,cfg)=>{const all=Storage.getAgentConfigs();all[id]={...(all[id]||{}),...cfg};localStorage.setItem("teamai_agent_configs",JSON.stringify(all))},
   getProfile:()=>{try{return JSON.parse(localStorage.getItem("teamai_profile")||"{}")}catch{return{}}},
   saveProfile:(p)=>{localStorage.setItem("teamai_profile",JSON.stringify(p))},
   // Auth
@@ -667,6 +669,7 @@ function Sidebar({ user, page, setPage, team, projects, theme, onToggleTheme, on
         {id:"teams",icon:"🏠",label:"Browse Teams"},
         {id:"dashboard",icon:"📁",label:"My Projects",badge:projects.length||null},
         {id:"builder",icon:"🛠️",label:"Build a Team"},
+        {id:"agents",icon:"🤖",label:"Agents"},
         {id:"profile",icon:"👤",label:"My Profile"},
       ].map(item=>(
         <div key={item.id} className={`sb-item${page===item.id?" act":""}`} onClick={()=>setPage(item.id)}>
@@ -699,6 +702,7 @@ function MobileNav({ page, setPage, team, theme, onToggleTheme }) {
         {id:"chat",icon:"💬",label:"Chat"},
         {id:"teams",icon:"🏠",label:"Teams"},
         {id:"dashboard",icon:"📁",label:"Projects"},
+        {id:"agents",icon:"🤖",label:"Agents"},
         {id:"profile",icon:"👤",label:"Profile"},
         ...(team?[{id:"team",icon:team.emoji,label:"Active"}]:[]),
       ].map(i=>(
@@ -1057,8 +1061,7 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
   const endRef = useRef(null);
 
   const activeTeam = team || (teams && teams[0]) || null;
-
-  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[messages,finalStreaming,streamingResults]);
+  const bots = (activeTeam?.bots || []).filter(b => (Storage.getAgentConfigs()[b.id]?.enabled ?? true));
 
   useEffect(() => {
     if (phase !== "thinking" && phase !== "synthesizing") return;
@@ -1112,11 +1115,11 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
 
     setPhase("thinking"); setStreamingResults({}); setStatuses({}); setFinalStreaming(""); setError("");
     const initStatus = {};
-    activeTeam.bots.forEach(b => { initStatus[b.id] = "running"; });
+    bots.forEach(b => { initStatus[b.id] = "running"; });
     setStatuses(initStatus);
 
     let hasError = false;
-    const botPromises = activeTeam.bots.map(bot =>
+    const botPromises = bots.map(bot =>
       callClaude(
         `${bot.collaborate}\n\nWork independently and deliver your complete expert contribution for this project.`,
         [{ role: "user", content: idea }]
@@ -1142,7 +1145,7 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
     }
 
     setPhase("synthesizing");
-    const allContribs = activeTeam.bots.map(b =>
+    const allContribs = bots.map(b =>
       `${b.emoji} ${b.name} (${b.role}):\n${all[b.id] || ""}`
     ).join("\n\n---\n\n");
 
@@ -1229,7 +1232,7 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
                 {m.role==="assistant" && m.results && (
                   <div style={{marginTop:12}}>
                     {Object.keys(m.results).filter(k=>k!=="_final").map(k=>{
-                      const bot = activeTeam?.bots.find(b=>b.id===k);
+                      const bot = bots.find(b=>b.id===k);
                       return bot && m.results[k] ? <ResultCard key={k} bot={bot} content={m.results[k]}/> : null;
                     })}
                   </div>
@@ -1241,7 +1244,7 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
             <div style={{display:"flex",gap:10,marginBottom:20}}>
               <div style={{width:32,height:32,borderRadius:"50%",background:"var(--surface2)",color:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:".75rem"}}>AI</div>
               <div style={{padding:"12px 16px",borderRadius:12,background:"var(--surface)",border:"1px solid var(--border)",fontFamily:"var(--font-m)",fontSize:".82rem",color:"var(--muted)"}}>
-                All {activeTeam?.bots.length} agents are thinking{dots}
+                All {bots.length} agents are thinking{dots}
               </div>
             </div>
           )}
@@ -1267,7 +1270,7 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
             <button className="send-btn" onClick={submit} disabled={!input.trim()||phase==="thinking"||phase==="synthesizing"}>Send</button>
           </div>
           <div style={{textAlign:"center",marginTop:6,fontSize:".6rem",color:"var(--muted2)",fontFamily:"var(--font-m)"}}>
-            Enter to send · Shift+Enter for new line · {activeTeam?.bots.length} agents ready
+            Enter to send · Shift+Enter for new line · {bots.length} agents ready
           </div>
         </div>
       </div>
@@ -1279,7 +1282,7 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
             <div style={{fontSize:".7rem",fontWeight:800,color:"var(--muted)",letterSpacing:1.5}}>AGENTS</div>
             <button onClick={()=>setShowAgents(false)} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer"}}>✕</button>
           </div>
-          {activeTeam?.bots.map(bot=>(
+          {bots.map(bot=>(
             <div key={bot.id} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:12,padding:12,marginBottom:8}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                 <span style={{fontSize:"1.2rem"}}>{bot.emoji}</span>
@@ -1307,6 +1310,70 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
       {!showAgents && (
         <button onClick={()=>setShowAgents(true)} style={{position:"fixed",right:12,top:12,zIndex:50,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,padding:"6px 10px",cursor:"pointer",color:"var(--muted)",fontSize:".7rem"}}>Agents ▸</button>
       )}
+    </div>
+  );
+}
+
+// ─── AGENTS PAGE ───
+function AgentsPage({ teams }) {
+  const [configs, setConfigs] = useState(()=>Storage.getAgentConfigs());
+  const [editing, setEditing] = useState(null);
+  const allBots = teams.flatMap(t => t.bots.map(b => ({...b, teamName: t.name, teamEmoji: t.emoji, teamId: t.id})));
+  const save = (id, patch) => {
+    Storage.saveAgentConfig(id, patch);
+    setConfigs(Storage.getAgentConfigs());
+    setEditing(null);
+  };
+  return (
+    <div>
+      <div className="ph fu"><div className="ph-title">Agent Management</div>
+        <div className="ph-sub">// configure agent roles, prompts, and enable/disable</div></div>
+      <div className="proj-grid fu2">
+        {allBots.map(b=>{
+          const cfg = configs[b.id] || {};
+          const enabled = cfg.enabled !== false;
+          return (
+            <div key={b.id} className="proj-card" style={{cursor:"default"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                <span style={{fontSize:"1.5rem"}}>{b.emoji}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:".9rem",fontWeight:800}}>{cfg.name || b.name}</div>
+                  <div style={{fontSize:".68rem",color:b.color,fontFamily:"var(--font-m)"}}>{cfg.role || b.role} · {b.teamEmoji} {b.teamName}</div>
+                </div>
+                <button onClick={()=>save(b.id,{enabled:!enabled})} style={{
+                  background: enabled?"rgba(78,255,160,.15)":"rgba(255,78,78,.15)",
+                  border:`1px solid ${enabled?"rgba(78,255,160,.4)":"rgba(255,78,78,.4)"}`,
+                  color: enabled?"var(--green)":"var(--red)",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontSize:".65rem",fontWeight:700}}>
+                  {enabled?"Enabled":"Disabled"}
+                </button>
+              </div>
+              {editing===b.id ? (
+                <div>
+                  <label className="llab">Name</label>
+                  <input className="finp" defaultValue={cfg.name||b.name} id={`n-${b.id}`}/>
+                  <label className="llab" style={{marginTop:8}}>Role</label>
+                  <input className="finp" defaultValue={cfg.role||b.role} id={`r-${b.id}`}/>
+                  <label className="llab" style={{marginTop:8}}>System instructions</label>
+                  <textarea className="finp" rows={4} defaultValue={cfg.collaborate||b.collaborate} id={`c-${b.id}`}/>
+                  <div style={{display:"flex",gap:8,marginTop:8}}>
+                    <button className="act-btn act-btn-primary" onClick={()=>{
+                      save(b.id,{
+                        name: document.getElementById(`n-${b.id}`).value,
+                        role: document.getElementById(`r-${b.id}`).value,
+                        collaborate: document.getElementById(`c-${b.id}`).value,
+                        enabled,
+                      });
+                    }}>Save</button>
+                    <button className="act-btn act-btn-sec" onClick={()=>setEditing(null)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button className="act-btn act-btn-sec" style={{width:"100%",justifyContent:"center"}} onClick={()=>setEditing(b.id)}>Edit</button>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1558,6 +1625,20 @@ export default function App() {
   }, []);
 
   const css = buildCSS(theme);
+  const applyAgentConfigs = (teams) => teams.map(t => ({
+    ...t,
+    bots: t.bots.map(b => {
+      const cfg = Storage.getAgentConfigs()[b.id];
+      if (!cfg) return b;
+      return { ...b,
+        name: cfg.name || b.name,
+        role: cfg.role || b.role,
+        collaborate: cfg.collaborate || b.collaborate,
+        solo: cfg.solo || b.solo,
+        enabled: cfg.enabled !== false,
+      };
+    }),
+  }));
 
   const toggleTheme = () => {
     const next = theme === "dark" ? "light" : "dark";
@@ -1580,16 +1661,20 @@ export default function App() {
         theme={theme} onToggleTheme={toggleTheme}
         onLogout={()=>{Storage.clearSession();setUser(null);setTeam(null);setPage("teams");}}/>
       <div className="main">
-        {page==="chat"&&<ChatPage team={team} teams={[...DEFAULT_TEAMS,...customTeams]} onSelectTeam={t=>{setTeam(t);}} onSaveProject={saveProject}/>}
+        {page==="chat"&&<ChatPage team={team} teams={applyAgentConfigs([...DEFAULT_TEAMS,...customTeams])} onSelectTeam={t=>{setTeam(t);}} onSaveProject={saveProject}/>}
        {page==="teams"&&<TeamsPage customTeams={customTeams} onSelect={t=>{setTeam(t);setPage("team");}} onDeleteCustom={deleteCustomTeam}/>}
         {page==="team"&&team&&<TeamView team={team} onBack={()=>setPage("teams")} onSaveProject={saveProject}/>}
         {page==="dashboard"&&<Dashboard projects={projects} onOpen={p=>{setOpenProject(p);setPage("project");}} onDelete={deleteProject}/>}
         {page==="project"&&openProject&&<ProjectViewer project={openProject} teams={customTeams} onBack={()=>{setOpenProject(null);setPage("dashboard");}}/>}
         {page==="builder"&&<TeamBuilder onSave={t=>{saveCustomTeam(t);setCustomTeams(Storage.getCustomTeams());}}/>}
+       {page==="agents"&&<AgentsPage teams={[...DEFAULT_TEAMS,...customTeams]}/>}
         {page==="profile"&&<ProfilePage user={user} projects={projects} customTeams={customTeams}/>}
       </div>
       <MobileNav page={page} setPage={setPage} team={team} theme={theme} onToggleTheme={toggleTheme}/>
     </div>
   );
 }
+
+
+
 
