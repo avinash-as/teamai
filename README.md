@@ -52,8 +52,10 @@ teamai
 
 Set in Vercel (or `.env` for local dev). See `.env.example`.
 
-Core:
-- `GEMINI_API_KEY` — from https://aistudio.google.com/app/apikey (optional; free Pollinations fallback used otherwise)
+Core (any one is enough; free Pollinations fallback used if none):
+- `GEMINI_API_KEY` — https://aistudio.google.com/app/apikey
+- `GROQ_API_KEY` — https://console.groq.com (free tier, fast)
+- `OPENROUTER_API_KEY` — https://openrouter.ai (free models)
 
 Backend (optional, for real persistence/auth):
 - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
