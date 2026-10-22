@@ -29,6 +29,7 @@ Build Tool
 
 AI Integration
 - Google Gemini (via Vercel serverless proxy)
+- Free fallback: Pollinations.ai (no key required, used when GEMINI_API_KEY is absent)
 
 Tools
 - Git / GitHub

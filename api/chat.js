@@ -7,14 +7,42 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({
-      error: "GEMINI_API_KEY is not configured",
-      hint: "Add GEMINI_API_KEY in Vercel → Settings → Environment Variables, then redeploy"
-    });
+  const { system, messages } = req.body || {};
+
+  // Free fallback (no key required): Pollinations.ai text generation
+  async function freeGenerate(sys, msgs) {
+    const prompt = [
+      sys ? `System: ${sys}` : "",
+      ...(msgs || []).map(m => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`),
+    ].filter(Boolean).join("\n\n");
+    const url = `https://text.pollinations.ai/${encodeURIComponent(prompt)}?model=openai`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`Free AI HTTP ${r.status}`);
+    return (await r.text()).trim();
   }
 
-  const { system, messages } = req.body || {};
+  async function streamText(text) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    // Stream in small chunks to feel live
+    const chunkSize = 120;
+    for (let i = 0; i < text.length; i += chunkSize) {
+      res.write(`data: ${JSON.stringify({ text: text.slice(i, i + chunkSize) })}\n\n`);
+      await new Promise(r => setTimeout(r, 12));
+    }
+    res.write("data: [DONE]\n\n");
+    res.end();
+  }
+
+  if (!apiKey) {
+    try {
+      const text = await freeGenerate(system, messages);
+      return streamText(text || "No response received.");
+    } catch (e) {
+      return res.status(500).json({ error: e.message, hint: "Free AI fallback failed. Add GEMINI_API_KEY for better results." });
+    }
+  }
 
   const geminiContents = (messages || []).map(m => ({
     role: m.role === "assistant" ? "model" : "user",
@@ -112,6 +140,14 @@ export default async function handler(req, res) {
       lastError = e.message;
       continue;
     }
+  }
+
+  // All Gemini models failed - try free fallback
+  try {
+    const text = await freeGenerate(system, messages);
+    return streamText(text || "No response received.");
+  } catch (e) {
+    lastError = lastError || e.message;
   }
 
   return res.status(500).json({
