@@ -10,15 +10,32 @@ export default async function handler(req, res) {
   const { system, messages } = req.body || {};
 
   // Free fallback (no key required): Pollinations.ai text generation
-  async function freeGenerate(sys, msgs) {
-    const prompt = [
-      sys ? `System: ${sys}` : "",
-      ...(msgs || []).map(m => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`),
-    ].filter(Boolean).join("\n\n");
-    const url = `https://text.pollinations.ai/${encodeURIComponent(prompt)}?model=openai`;
-    const r = await fetch(url);
-    if (!r.ok) throw new Error(`Free AI HTTP ${r.status}`);
-    return (await r.text()).trim();
+  async function freeGenerate(sys, msgs, attempt = 0) {
+    const messages = [];
+    if (sys) messages.push({ role: "system", content: sys });
+    (msgs || []).forEach(m => messages.push({ role: m.role === "assistant" ? "assistant" : "user", content: m.content }));
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000);
+    try {
+      const r = await fetch("https://text.pollinations.ai/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages, model: "openai" }),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!r.ok) throw new Error(`Free AI HTTP ${r.status}`);
+      const text = (await r.text()).trim();
+      if (!text) throw new Error("Free AI returned empty response");
+      return text;
+    } catch (e) {
+      clearTimeout(timer);
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+        return freeGenerate(sys, msgs, attempt + 1);
+      }
+      throw e;
+    }
   }
 
   async function streamText(text) {

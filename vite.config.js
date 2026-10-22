@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   base: './',
+  server: { proxy: { "/api": "http://127.0.0.1:3001" } },
   plugins: [
     react(),
     VitePWA({
