@@ -50,9 +50,17 @@ teamai
 
 ## ⚙️ Environment Variables
 
-Set in Vercel (or `.env` for local dev):
+Set in Vercel (or `.env` for local dev). See `.env.example`.
 
-- `GEMINI_API_KEY` — from https://aistudio.google.com/app/apikey
+Core:
+- `GEMINI_API_KEY` — from https://aistudio.google.com/app/apikey (optional; free Pollinations fallback used otherwise)
+
+Backend (optional, for real persistence/auth):
+- `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
+- `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+
+GitHub integration (optional, for real file changes):
+- `GITHUB_TOKEN` (PAT with repo scope)
 
 ## 🚀 Getting Started
 

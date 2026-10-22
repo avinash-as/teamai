@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, Component } from "react";
+import { Storage } from "./lib/storage.js";
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400&display=swap');`;
 
@@ -116,32 +117,6 @@ const DEFAULT_TEAMS = [
   },
 ];
 
-// ─── STORAGE ───
-const Storage = {
-  getProjects:()=>{try{return JSON.parse(localStorage.getItem("teamai_projects")||"[]")}catch{return[]}},
-  saveProject:(p)=>{const ps=Storage.getProjects().filter(x=>x.id!==p.id);localStorage.setItem("teamai_projects",JSON.stringify([p,...ps]))},
-  deleteProject:(id)=>{localStorage.setItem("teamai_projects",JSON.stringify(Storage.getProjects().filter(p=>p.id!==id)))},
-  getCustomTeams:()=>{try{return JSON.parse(localStorage.getItem("teamai_custom_teams")||"[]")}catch{return[]}},
-  saveCustomTeam:(t)=>{const ts=Storage.getCustomTeams().filter(x=>x.id!==t.id);localStorage.setItem("teamai_custom_teams",JSON.stringify([...ts,t]))},
-  deleteCustomTeam:(id)=>{localStorage.setItem("teamai_custom_teams",JSON.stringify(Storage.getCustomTeams().filter(t=>t.id!==id)))},
-  getChatHistory:(key)=>{try{return JSON.parse(localStorage.getItem(`teamai_chat_${key}`)||"[]")}catch{return[]}},
-  saveChatHistory:(key,msgs)=>{localStorage.setItem(`teamai_chat_${key}`,JSON.stringify(msgs.slice(-50)))},
-  getConversations:()=>{try{return JSON.parse(localStorage.getItem("teamai_conversations")||"[]")}catch{return[]}},
-  saveConversation:(c)=>{const cs=Storage.getConversations().filter(x=>x.id!==c.id);localStorage.setItem("teamai_conversations",JSON.stringify([c,...cs].slice(0,50)))},
-  deleteConversation:(id)=>{localStorage.setItem("teamai_conversations",JSON.stringify(Storage.getConversations().filter(c=>c.id!==id)))},
-  getAgentConfigs:()=>{try{return JSON.parse(localStorage.getItem("teamai_agent_configs")||"{}")}catch{return{}}},
-  saveAgentConfig:(id,cfg)=>{const all=Storage.getAgentConfigs();all[id]={...(all[id]||{}),...cfg};localStorage.setItem("teamai_agent_configs",JSON.stringify(all))},
-  getProfile:()=>{try{return JSON.parse(localStorage.getItem("teamai_profile")||"{}")}catch{return{}}},
-  saveProfile:(p)=>{localStorage.setItem("teamai_profile",JSON.stringify(p))},
-  // Auth
-  getUsers:()=>{try{return JSON.parse(localStorage.getItem("teamai_users")||"[]")}catch{return[]}},
-  saveUser:(u)=>{const us=Storage.getUsers().filter(x=>x.email!==u.email);localStorage.setItem("teamai_users",JSON.stringify([...us,u]))},
-  getSession:()=>{try{return JSON.parse(localStorage.getItem("teamai_session")||"null")}catch{return null}},
-  saveSession:(u)=>{localStorage.setItem("teamai_session",JSON.stringify(u))},
-  clearSession:()=>{localStorage.removeItem("teamai_session")},
-  getTheme:()=>localStorage.getItem("teamai_theme")||"dark",
-  saveTheme:(t)=>localStorage.setItem("teamai_theme",t),
-};
 
 // Simple hash for demo auth (not cryptographically secure, but better than plaintext)
 function simpleHash(str) {
@@ -1762,6 +1737,7 @@ export default function App() {
     </ErrorBoundary>
   );
 }
+
 
 
 
