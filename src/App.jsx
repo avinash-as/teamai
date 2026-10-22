@@ -1537,6 +1537,14 @@ function ProfilePage({ user, projects, customTeams }) {
   const [displayName, setDisplayName] = useState(saved.displayName||user.name);
   const [bio, setBio] = useState(saved.bio||"");
   const [ok, setOk] = useState(false);
+  const clearAll = () => {
+    if (!confirm("Delete all projects, conversations, and custom teams? This cannot be undone.")) return;
+    localStorage.removeItem("teamai_projects");
+    localStorage.removeItem("teamai_conversations");
+    localStorage.removeItem("teamai_custom_teams");
+    localStorage.removeItem("teamai_chat_history");
+    window.location.reload();
+  };
   const chatCount=Object.keys(localStorage).filter(k=>k.startsWith("teamai_chat_")).length;
   const save=()=>{ Storage.saveProfile({displayName,bio}); setOk(true); setTimeout(()=>setOk(false),2000); };
   return (
@@ -1562,6 +1570,9 @@ function ProfilePage({ user, projects, customTeams }) {
             <input className="linp" placeholder="Tell us about yourself..." value={bio} onChange={e=>setBio(e.target.value)}/>
           </div>
           <button className={`save-btn${ok?" ok":""}`} onClick={save}>{ok?"✓ Saved!":"Save Profile"}</button>
+        </div>
+        <div style={{marginTop:14}}>
+          <button className="act-btn act-btn-sec" style={{width:"100%",justifyContent:"center",color:"var(--red)",borderColor:"rgba(255,78,78,.3)"}} onClick={clearAll}>🗑 Clear all data</button>
         </div>
       </div>
       <div className="profile-card fu3">
