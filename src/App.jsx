@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Component } from "react";
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400&display=swap');`;
 
@@ -533,6 +533,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-h);overflow-x
 .add-bot-btn{display:flex;align-items:center;gap:6px;background:transparent;border:1px dashed var(--border2);color:var(--muted);font-family:var(--font-h);font-size:.78rem;font-weight:700;padding:11px 16px;border-radius:10px;cursor:pointer;transition:all .2s;width:100%;justify-content:center;margin-bottom:16px;}
 .add-bot-btn:hover{color:var(--accent);border-color:rgba(0,232,255,.4);background:rgba(0,232,255,.04);}
 @media(max-width:860px){
+  .agent-panel{position:fixed;bottom:0;left:0;right:0;width:100%!important;height:50vh;z-index:90;border-left:none;border-top:1px solid var(--border);border-radius:16px 16px 0 0;}
   .main{padding:18px 16px 100px;}.sb{display:none;}
   .tg,.proj-grid{grid-template-columns:1fr;}.ph-title{font-size:1.55rem;}
   .ph{margin-bottom:18px;}
@@ -745,7 +746,7 @@ function BotChat({ bot, idea, prevResult }) {
   const [showAll, setShowAll] = useState(false);
   const endRef = useRef(null);
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs,streamingText]);
-  useEffect(()=>{Storage.saveChatHistory(key,msgs)},[msgs]);
+  useEffect(()=>{const t=setTimeout(()=>Storage.saveChatHistory(key,msgs),400);return ()=>clearTimeout(t);},[msgs,key]);
 
   const send = async () => {
     if (!inp.trim() || loading) return;
@@ -1055,6 +1056,7 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
   const [finalStreaming, setFinalStreaming] = useState("");
   const [activeBot, setActiveBot] = useState(null);
   const [showAgents, setShowAgents] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState("");
   const [workingDots, setWorkingDots] = useState(0);
   const [lastIdea, setLastIdea] = useState("");
@@ -1177,6 +1179,18 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
     build(q);
   };
 
+  const retryBot = async (bot) => {
+    if (!lastIdea) return;
+    setStatuses(s=>({...s,[bot.id]:"running"}));
+    const result = await callClaude(
+      `${bot.collaborate}\n\nWork independently and deliver your complete expert contribution for this project.`,
+      [{ role: "user", content: lastIdea }]
+    );
+    if (result.startsWith("Error:")) setStatuses(s=>({...s,[bot.id]:"failed"}));
+    else setStatuses(s=>({...s,[bot.id]:"completed"}));
+    setStreamingResults(prev=>({...prev,[bot.id]:result}));
+  };
+
   const dots = ".".repeat(workingDots);
 
   return (
@@ -1184,9 +1198,11 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
       {/* Conversation sidebar */}
       <div style={{width:260,borderRight:"1px solid var(--border)",background:"var(--surface)",display:"flex",flexDirection:"column",padding:12,flexShrink:0}}>
         <button className="build-btn" style={{width:"100%",justifyContent:"center",marginBottom:12}} onClick={newChat}>+ New chat</button>
+        <input className="finp" placeholder="Search conversations..." value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
+          style={{marginBottom:8,fontSize:".75rem",padding:"6px 10px"}}/>
         <div style={{flex:1,overflowY:"auto"}}>
-          {conversations.length===0 && <div style={{color:"var(--muted)",fontSize:".75rem",padding:8}}>No conversations yet</div>}
-          {conversations.map(c=>(
+          {conversations.filter(c=>(c.title||"").toLowerCase().includes(searchQuery.toLowerCase())).length===0 && <div style={{color:"var(--muted)",fontSize:".75rem",padding:8}}>No conversations</div>}
+          {conversations.filter(c=>(c.title||"").toLowerCase().includes(searchQuery.toLowerCase())).map(c=>(
             <div key={c.id} onClick={()=>openConv(c.id)} style={{
               padding:"8px 10px",borderRadius:8,cursor:"pointer",marginBottom:4,fontSize:".8rem",
               background: activeId===c.id ? "rgba(0,232,255,.09)" : "transparent",
@@ -1277,7 +1293,7 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
 
       {/* Agent panel */}
       {showAgents && (
-        <div style={{width:280,borderLeft:"1px solid var(--border)",background:"var(--surface)",padding:12,overflowY:"auto",flexShrink:0}}>
+        <div className="agent-panel" style={{width:280,borderLeft:"1px solid var(--border)",background:"var(--surface)",padding:12,overflowY:"auto",flexShrink:0}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{fontSize:".7rem",fontWeight:800,color:"var(--muted)",letterSpacing:1.5}}>AGENTS</div>
             <button onClick={()=>setShowAgents(false)} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer"}}>✕</button>
@@ -1298,6 +1314,9 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
                 <div style={{fontSize:".65rem",color:"var(--muted)",fontFamily:"var(--font-m)",maxHeight:60,overflow:"hidden"}}>
                   {streamingResults[bot.id].substring(0,120)}...
                 </div>
+              )}
+              {statuses[bot.id]==="failed" && (
+                <button className="retry-btn" style={{marginTop:6,width:"100%"}} onClick={()=>retryBot(bot)}>↺ Retry agent</button>
               )}
               <button className="chat-hist-btn" style={{marginTop:6,width:"100%"}} onClick={()=>setActiveBot(activeBot?.id===bot.id?null:bot)}>
                 {activeBot?.id===bot.id?"Close chat":"Chat with agent"}
@@ -1587,6 +1606,26 @@ function TeamBuilder({ onSave }) {
   );
 }
 
+// ─── ERROR BOUNDARY ───
+class ErrorBoundary extends Component {
+  constructor(props){super(props);this.state={hasError:false,error:null};}
+  static getDerivedStateFromError(error){return {hasError:true,error};}
+  componentDidCatch(error,info){console.error("ErrorBoundary caught:",error,info);}
+  render(){
+    if(this.state.hasError){
+      return (
+        <div style={{padding:40,textAlign:"center",color:"var(--text)",fontFamily:"var(--font-m)"}}>
+          <div style={{fontSize:"2rem",marginBottom:12}}>⚠️</div>
+          <div style={{fontWeight:800,marginBottom:8}}>Something went wrong</div>
+          <div style={{fontSize:".75rem",color:"var(--muted)",marginBottom:16,whiteSpace:"pre-wrap"}}>{String(this.state.error?.message||this.state.error)}</div>
+          <button className="act-btn act-btn-primary" onClick={()=>{this.setState({hasError:false,error:null});window.location.reload();}}>Reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ─── APP ROOT ───
 export default function App() {
   const [splash, setSplash] = useState(true);
@@ -1654,6 +1693,7 @@ export default function App() {
   if (!user) return <><style>{css}</style><Login onLogin={u=>setUser(u)}/></>;
 
   return (
+    <ErrorBoundary>
     <div className="app">
       <style>{css}</style>
       <div className="grid-bg"/><div className="orb orb1"/><div className="orb orb2"/><div className="orb orb3"/>
@@ -1672,6 +1712,7 @@ export default function App() {
       </div>
       <MobileNav page={page} setPage={setPage} team={team} theme={theme} onToggleTheme={toggleTheme}/>
     </div>
+    </ErrorBoundary>
   );
 }
 
