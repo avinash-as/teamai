@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Component } from "react";
 import { Storage } from "./lib/storage.js";
+import { computeWaves } from "./lib/scheduler.js";
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400&display=swap');`;
 
@@ -11,10 +12,10 @@ const DEFAULT_TEAMS = [
       {id:"strategyai",name:"StrategyAI",role:"Business Strategist",emoji:"♟️",color:"#00e8ff",
         collaborate:`You are StrategyAI, an elite business strategist. Deliver: market research, target audience, business model, competitive analysis, revenue streams, go-to-market strategy. Be thorough.`,
         solo:`You are StrategyAI, elite business strategist. Help with market analysis, business models, competitive strategy.`},
-      {id:"pixelai",name:"PixelAI",role:"UI/UX Designer",emoji:"🎨",color:"#ff6fff",
+      {id:"pixelai",name:"PixelAI",role:"UI/UX Designer",emoji:"🎨",color:"#ff6fff",dependsOn:["strategyai"],
         collaborate:`You are PixelAI, elite UI/UX designer. Based on strategy above, design: complete design system, color palette, typography, UI structure, user flows, wireframes.`,
         solo:`You are PixelAI, elite UI/UX designer. Help with design systems, user flows, wireframes, color palettes.`},
-      {id:"codex",name:"CodeX",role:"Lead Engineer",emoji:"⚡",color:"#ffe44d",
+      {id:"codex",name:"CodeX",role:"Lead Engineer",emoji:"⚡",color:"#ffe44d",dependsOn:["strategyai","pixelai"],
         collaborate:`You are CodeX, elite full-stack engineer. Write: complete working code, tech stack recommendations, full README.md content.`,
         solo:`You are CodeX, elite full-stack engineer. Help with code, architecture, debugging, tech decisions.`},
       {id:"growthbot",name:"GrowthBot",role:"Growth Marketer",emoji:"📈",color:"#4effa0",
@@ -647,6 +648,7 @@ function Sidebar({ user, page, setPage, team, projects, theme, onToggleTheme, on
         {id:"builder",icon:"🛠️",label:"Build a Team"},
         {id:"agents",icon:"🤖",label:"Agents"},
         {id:"providers",icon:"🔌",label:"AI Providers"},
+        {id:"github",icon:"🐙",label:"GitHub Files"},
         {id:"profile",icon:"👤",label:"My Profile"},
       ].map(item=>(
         <div key={item.id} className={`sb-item${page===item.id?" act":""}`} onClick={()=>setPage(item.id)}>
@@ -681,6 +683,7 @@ function MobileNav({ page, setPage, team, theme, onToggleTheme }) {
         {id:"dashboard",icon:"📁",label:"Projects"},
         {id:"agents",icon:"🤖",label:"Agents"},
         {id:"providers",icon:"🔌",label:"Providers"},
+        {id:"github",icon:"🐙",label:"GitHub"},
         {id:"profile",icon:"👤",label:"Profile"},
         ...(team?[{id:"team",icon:team.emoji,label:"Active"}]:[]),
       ].map(i=>(
@@ -1125,29 +1128,40 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
     setStatuses(initStatus);
 
     let hasError = false;
-    const botPromises = bots.map(bot =>
-      callClaude(
-        `${bot.collaborate}\n\nWork independently and deliver your complete expert contribution for this project.`,
-        [{ role: "user", content: idea }]
-      ).then(result => {
-        if (result.startsWith("Error:")) { hasError = true; setStatuses(s=>({...s,[bot.id]:"failed"})); }
-        else setStatuses(s=>({...s,[bot.id]:"completed"}));
-        setStreamingResults(prev => ({...prev, [bot.id]: result}));
-        return { id: bot.id, result };
-      }).catch(e => {
-        hasError = true;
-        setStatuses(s=>({...s,[bot.id]:"failed"}));
-        return { id: bot.id, result: `Error: ${e.message}` };
-      })
-    );
-
-    const allResults = await Promise.all(botPromises);
     const all = {};
-    allResults.forEach(({ id, result }) => { all[id] = result; });
+    const deps = (b) => (b.dependsOn || []);
+    // Compute execution waves (DAG scheduling) via scheduler util
+    const waves = computeWaves(bots);
+
+    for (const wave of waves) {
+      const wavePromises = wave.map(bot => {
+        setStatuses(s => ({ ...s, [bot.id]: "running" }));
+        const prevContext = deps(bot).map(d => all[d] ? `${d}: ${String(all[d]).substring(0, 500)}` : "").filter(Boolean).join("\n\n");
+        const prompt = prevContext
+          ? `${bot.collaborate}\n\nWork independently and deliver your complete expert contribution for this project.\n\nContext from prerequisite agents:\n${prevContext}`
+          : `${bot.collaborate}\n\nWork independently and deliver your complete expert contribution for this project.`;
+        return callClaude(prompt, [{ role: "user", content: idea }])
+          .then(result => {
+            if (result.startsWith("Error:")) { hasError = true; setStatuses(s => ({ ...s, [bot.id]: "failed" })); }
+            else setStatuses(s => ({ ...s, [bot.id]: "completed" }));
+            setStreamingResults(prev => ({ ...prev, [bot.id]: result }));
+            all[bot.id] = result;
+            return { id: bot.id, result };
+          })
+          .catch(e => {
+            hasError = true;
+            setStatuses(s => ({ ...s, [bot.id]: "failed" }));
+            const r = `Error: ${e.message}`;
+            all[bot.id] = r;
+            return { id: bot.id, result: r };
+          });
+      });
+      await Promise.all(wavePromises);
+    }
 
     if (hasError) {
-      const errBot = allResults.find(r => (r.result||"").startsWith("Error:"));
-      setError(errBot?.result.replace("Error: ","") || "One or more agents failed.");
+      const errEntry = Object.entries(all).find(([,v]) => String(v).startsWith("Error:"));
+      setError(errEntry ? String(errEntry[1]).replace("Error: ","") : "One or more agents failed.");
     }
 
     setPhase("synthesizing");
@@ -1741,6 +1755,132 @@ class ErrorBoundary extends Component {
   }
 }
 
+// ─── DIFF PREVIEW COMPONENT ───
+function DiffPreview({ oldText, newText, fileName }) {
+  const oldLines = (oldText || "").split("\n");
+  const newLines = (newText || "").split("\n");
+  return (
+    <div style={{fontFamily:"var(--font-m)",fontSize:".72rem",border:"1px solid var(--border)",borderRadius:8,overflow:"hidden",margin:"8px 0"}}>
+      <div style={{padding:"6px 10px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",fontWeight:700}}>
+        {fileName || "diff"}
+      </div>
+      <div style={{maxHeight:240,overflow:"auto",padding:8}}>
+        {newLines.map((line, i) => {
+          const oldLine = oldLines[i];
+          const changed = oldLine !== line;
+          return (
+            <div key={i} style={{background: changed ? "rgba(78,255,160,.08)" : "transparent", padding:"1px 4px", whiteSpace:"pre-wrap", wordBreak:"break-word"}}>
+              {changed ? "+ " : "  "}{line}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── GITHUB FILES PAGE ───
+function GitHubPage() {
+  const [owner, setOwner] = useState("");
+  const [repo, setRepo] = useState("");
+  const [path, setPath] = useState("");
+  const [files, setFiles] = useState([]);
+  const [content, setContent] = useState("");
+  const [selectedFile, setSelectedFile] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const listFiles = async () => {
+    if (!owner || !repo) return;
+    setLoading(true); setStatus("");
+    try {
+      const r = await fetch("/api/github", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list", owner, repo, path }) });
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      setFiles(data.files || []);
+      setStatus(`Loaded ${data.files?.length || 0} items`);
+    } catch (e) { setStatus(`Error: ${e.message}`); }
+    setLoading(false);
+  };
+
+  const readFile = async (filePath) => {
+    setLoading(true); setStatus("");
+    try {
+      const r = await fetch("/api/github", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "read", owner, repo, path: filePath }) });
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      setSelectedFile(filePath);
+      setContent(data.content || "");
+      setEditContent(data.content || "");
+      setStatus(`Loaded ${filePath}`);
+    } catch (e) { setStatus(`Error: ${e.message}`); }
+    setLoading(false);
+  };
+
+  const writeFile = async () => {
+    if (!selectedFile) return;
+    setLoading(true); setStatus("");
+    try {
+      const r = await fetch("/api/github", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "write", owner, repo, path: selectedFile, content: editContent, message: message || `Update ${selectedFile} via TeamAI` }) });
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      setStatus(`Committed ${data.commit?.slice(0, 7) || "ok"} to ${selectedFile}`);
+      setContent(editContent);
+    } catch (e) { setStatus(`Error: ${e.message}`); }
+    setLoading(false);
+  };
+
+  return (
+    <div>
+      <div className="ph fu"><div className="ph-title">GitHub Files</div>
+        <div className="ph-sub">// browse and edit repository files via GitHub API</div></div>
+      <div className="builder-box fu2">
+        <div className="field-row">
+          <div className="field"><label>Owner</label><input className="finp" value={owner} onChange={e=>setOwner(e.target.value)} placeholder="avinash-as"/></div>
+          <div className="field"><label>Repo</label><input className="finp" value={repo} onChange={e=>setRepo(e.target.value)} placeholder="teamai"/></div>
+          <div className="field finp-full"><label>Path</label><input className="finp" value={path} onChange={e=>setPath(e.target.value)} placeholder="src/"/></div>
+        </div>
+        <button className="act-btn act-btn-primary" onClick={listFiles} disabled={loading || !owner || !repo}>
+          {loading ? "Loading..." : "List files"}
+        </button>
+        {status && <div style={{marginTop:8,fontSize:".72rem",color:"var(--muted)",fontFamily:"var(--font-m)"}}>{status}</div>}
+      </div>
+
+      <div style={{display:"flex",gap:16,marginTop:16,flexWrap:"wrap"}}>
+        <div style={{flex:1,minWidth:200,maxHeight:400,overflow:"auto",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:12}}>
+          <div style={{fontSize:".7rem",fontWeight:800,color:"var(--muted)",marginBottom:8}}>FILES</div>
+          {files.map(f => (
+            <div key={f.path} onClick={() => f.type === "file" && readFile(f.path)}
+              style={{padding:"4px 6px",cursor: f.type==="file"?"pointer":"default",fontSize:".75rem",fontFamily:"var(--font-m)",borderBottom:"1px solid var(--border)",
+                color: f.type==="dir" ? "var(--accent)" : "var(--text)"}}>
+              {f.type === "dir" ? "📁" : "📄"} {f.name}
+            </div>
+          ))}
+          {files.length === 0 && <div style={{color:"var(--muted)",fontSize:".75rem"}}>No files loaded</div>}
+        </div>
+
+        {selectedFile && (
+          <div style={{flex:2,minWidth:300}}>
+            <div style={{fontSize:".75rem",fontWeight:800,marginBottom:6}}>{selectedFile}</div>
+            <textarea className="finp" rows={12} value={editContent} onChange={e=>setEditContent(e.target.value)} style={{fontFamily:"var(--font-m)",fontSize:".75rem"}}/>
+            <input className="finp" style={{marginTop:8}} placeholder="Commit message" value={message} onChange={e=>setMessage(e.target.value)}/>
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              <button className="act-btn act-btn-primary" onClick={writeFile} disabled={loading}>Commit changes</button>
+              <button className="act-btn act-btn-sec" onClick={() => { setEditContent(content); }}>Revert</button>
+            </div>
+            {content !== editContent && <DiffPreview oldText={content} newText={editContent} fileName={selectedFile}/>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── APP ROOT ───
 export default function App() {
   const [splash, setSplash] = useState(true);
@@ -1824,6 +1964,7 @@ export default function App() {
         {page==="builder"&&<TeamBuilder onSave={t=>{saveCustomTeam(t);setCustomTeams(Storage.getCustomTeams());}}/>}
        {page==="agents"&&<AgentsPage teams={[...DEFAULT_TEAMS,...customTeams]}/>}
        {page==="providers"&&<ProvidersPage/>}
+       {page==="github"&&<GitHubPage/>}
         {page==="profile"&&<ProfilePage user={user} projects={projects} customTeams={customTeams}/>}
       </div>
       <MobileNav page={page} setPage={setPage} team={team} theme={theme} onToggleTheme={toggleTheme}/>
