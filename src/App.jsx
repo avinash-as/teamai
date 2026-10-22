@@ -126,6 +126,9 @@ const Storage = {
   deleteCustomTeam:(id)=>{localStorage.setItem("teamai_custom_teams",JSON.stringify(Storage.getCustomTeams().filter(t=>t.id!==id)))},
   getChatHistory:(key)=>{try{return JSON.parse(localStorage.getItem(`teamai_chat_${key}`)||"[]")}catch{return[]}},
   saveChatHistory:(key,msgs)=>{localStorage.setItem(`teamai_chat_${key}`,JSON.stringify(msgs.slice(-50)))},
+  getConversations:()=>{try{return JSON.parse(localStorage.getItem("teamai_conversations")||"[]")}catch{return[]}},
+  saveConversation:(c)=>{const cs=Storage.getConversations().filter(x=>x.id!==c.id);localStorage.setItem("teamai_conversations",JSON.stringify([c,...cs].slice(0,50)))},
+  deleteConversation:(id)=>{localStorage.setItem("teamai_conversations",JSON.stringify(Storage.getConversations().filter(c=>c.id!==id)))},
   getProfile:()=>{try{return JSON.parse(localStorage.getItem("teamai_profile")||"{}")}catch{return{}}},
   saveProfile:(p)=>{localStorage.setItem("teamai_profile",JSON.stringify(p))},
   // Auth
@@ -660,6 +663,7 @@ function Sidebar({ user, page, setPage, team, projects, theme, onToggleTheme, on
       <div className="sb-ver">// v4.0 · multi-agent platform</div>
       <div className="sb-sec">Navigate</div>
       {[
+        {id:"chat",icon:"💬",label:"Chat"},
         {id:"teams",icon:"🏠",label:"Browse Teams"},
         {id:"dashboard",icon:"📁",label:"My Projects",badge:projects.length||null},
         {id:"builder",icon:"🛠️",label:"Build a Team"},
@@ -692,10 +696,10 @@ function MobileNav({ page, setPage, team, theme, onToggleTheme }) {
   return (
     <div className="mob-nav">
       {[
+        {id:"chat",icon:"💬",label:"Chat"},
         {id:"teams",icon:"🏠",label:"Teams"},
         {id:"dashboard",icon:"📁",label:"Projects"},
         {id:"profile",icon:"👤",label:"Profile"},
-        {id:"builder",icon:"🛠️",label:"Builder"},
         ...(team?[{id:"team",icon:team.emoji,label:"Active"}]:[]),
       ].map(i=>(
         <div key={i.id} className={`mob-nav-item${page===i.id?" act":""}`} onClick={()=>setPage(i.id)}>
@@ -1035,6 +1039,278 @@ function TeamView({ team, onBack, onSaveProject }) {
   );
 }
 
+// ─── CHAT PAGE (ChatGPT-style multi-agent) ───
+function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
+  const [conversations, setConversations] = useState(()=>Storage.getConversations());
+  const [activeId, setActiveId] = useState(()=>Storage.getConversations()[0]?.id || null);
+  const [messages, setMessages] = useState(()=>{const c=Storage.getConversations()[0];return c?c.messages:[];});
+  const [input, setInput] = useState("");
+  const [phase, setPhase] = useState("idle"); // idle | thinking | synthesizing | done | error
+  const [streamingResults, setStreamingResults] = useState({});
+  const [statuses, setStatuses] = useState({}); // botId -> status
+  const [finalStreaming, setFinalStreaming] = useState("");
+  const [activeBot, setActiveBot] = useState(null);
+  const [showAgents, setShowAgents] = useState(true);
+  const [error, setError] = useState("");
+  const [workingDots, setWorkingDots] = useState(0);
+  const [lastIdea, setLastIdea] = useState("");
+  const endRef = useRef(null);
+
+  const activeTeam = team || (teams && teams[0]) || null;
+
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[messages,finalStreaming,streamingResults]);
+
+  useEffect(() => {
+    if (phase !== "thinking" && phase !== "synthesizing") return;
+    const t = setInterval(() => setWorkingDots(d => (d + 1) % 4), 500);
+    return () => clearInterval(t);
+  }, [phase]);
+
+  const persistConv = (msgs) => {
+    if (!activeId) return;
+    const convs = Storage.getConversations();
+    const c = convs.find(x=>x.id===activeId);
+    if (c) { c.messages = msgs; c.updatedAt = new Date().toISOString(); Storage.saveConversation(c); setConversations(Storage.getConversations()); }
+  };
+
+  const newChat = () => {
+    const id = Date.now().toString();
+    const c = { id, title: "New chat", messages: [], teamId: activeTeam?.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+    Storage.saveConversation(c);
+    setConversations(Storage.getConversations());
+    setActiveId(id);
+    setMessages([]);
+    setPhase("idle"); setStreamingResults({}); setStatuses({}); setFinalStreaming(""); setError("");
+  };
+
+  const openConv = (id) => {
+    const c = Storage.getConversations().find(x=>x.id===id);
+    if (!c) return;
+    setActiveId(id);
+    setMessages(c.messages || []);
+    setPhase("idle"); setStreamingResults({}); setStatuses({}); setFinalStreaming(""); setError("");
+  };
+
+  const deleteConv = (id) => {
+    Storage.deleteConversation(id);
+    setConversations(Storage.getConversations());
+    if (activeId === id) { setActiveId(null); setMessages([]); }
+  };
+
+  const build = async (idea) => {
+    if (!idea.trim() || !activeTeam) return;
+    setLastIdea(idea);
+    const userMsg = { role: "user", content: idea, ts: new Date().toISOString() };
+    const newMsgs = [...messages, userMsg];
+    setMessages(newMsgs);
+    persistConv(newMsgs);
+    if (newMsgs.filter(m=>m.role==="user").length === 1) {
+      const convs = Storage.getConversations();
+      const c = convs.find(x=>x.id===activeId);
+      if (c) { c.title = idea.substring(0,40); Storage.saveConversation(c); setConversations(Storage.getConversations()); }
+    }
+
+    setPhase("thinking"); setStreamingResults({}); setStatuses({}); setFinalStreaming(""); setError("");
+    const initStatus = {};
+    activeTeam.bots.forEach(b => { initStatus[b.id] = "running"; });
+    setStatuses(initStatus);
+
+    let hasError = false;
+    const botPromises = activeTeam.bots.map(bot =>
+      callClaude(
+        `${bot.collaborate}\n\nWork independently and deliver your complete expert contribution for this project.`,
+        [{ role: "user", content: idea }]
+      ).then(result => {
+        if (result.startsWith("Error:")) { hasError = true; setStatuses(s=>({...s,[bot.id]:"failed"})); }
+        else setStatuses(s=>({...s,[bot.id]:"completed"}));
+        setStreamingResults(prev => ({...prev, [bot.id]: result}));
+        return { id: bot.id, result };
+      }).catch(e => {
+        hasError = true;
+        setStatuses(s=>({...s,[bot.id]:"failed"}));
+        return { id: bot.id, result: `Error: ${e.message}` };
+      })
+    );
+
+    const allResults = await Promise.all(botPromises);
+    const all = {};
+    allResults.forEach(({ id, result }) => { all[id] = result; });
+
+    if (hasError) {
+      const errBot = allResults.find(r => (r.result||"").startsWith("Error:"));
+      setError(errBot?.result.replace("Error: ","") || "One or more agents failed.");
+    }
+
+    setPhase("synthesizing");
+    const allContribs = activeTeam.bots.map(b =>
+      `${b.emoji} ${b.name} (${b.role}):\n${all[b.id] || ""}`
+    ).join("\n\n---\n\n");
+
+    let summary = "";
+    await callClaudeStream(
+      `You are a master synthesizer. Combine ALL expert contributions into ONE powerful, complete, unified final plan. Use clear sections with headers. Make it actionable and ready to execute.`,
+      [{ role: "user", content: `Original Idea: "${idea}"\n\nAll Expert Contributions:\n\n${allContribs}\n\nWrite the complete unified final plan now.` }],
+      (text) => { summary = text; setFinalStreaming(text); },
+      (err) => setError(err)
+    );
+
+    setFinalStreaming("");
+    const proj = {
+      id: Date.now().toString(), teamId: activeTeam.id, teamName: activeTeam.name, teamEmoji: activeTeam.emoji,
+      title: idea.substring(0, 60), idea, results: { ...all, _final: summary }, createdAt: new Date().toISOString(),
+    };
+    onSaveProject(proj);
+
+    const assistantMsg = { role: "assistant", content: summary || allContribs, results: all, finalResult: summary, ts: new Date().toISOString() };
+    const finalMsgs = [...newMsgs, assistantMsg];
+    setMessages(finalMsgs);
+    persistConv(finalMsgs);
+    setPhase("done");
+  };
+
+  const submit = () => {
+    if (!input.trim() || phase === "thinking" || phase === "synthesizing") return;
+    const q = input.trim(); setInput("");
+    build(q);
+  };
+
+  const dots = ".".repeat(workingDots);
+
+  return (
+    <div style={{display:"flex",height:"100vh",overflow:"hidden"}}>
+      {/* Conversation sidebar */}
+      <div style={{width:260,borderRight:"1px solid var(--border)",background:"var(--surface)",display:"flex",flexDirection:"column",padding:12,flexShrink:0}}>
+        <button className="build-btn" style={{width:"100%",justifyContent:"center",marginBottom:12}} onClick={newChat}>+ New chat</button>
+        <div style={{flex:1,overflowY:"auto"}}>
+          {conversations.length===0 && <div style={{color:"var(--muted)",fontSize:".75rem",padding:8}}>No conversations yet</div>}
+          {conversations.map(c=>(
+            <div key={c.id} onClick={()=>openConv(c.id)} style={{
+              padding:"8px 10px",borderRadius:8,cursor:"pointer",marginBottom:4,fontSize:".8rem",
+              background: activeId===c.id ? "rgba(0,232,255,.09)" : "transparent",
+              color: activeId===c.id ? "var(--accent)" : "var(--text)",
+              display:"flex",justifyContent:"space-between",alignItems:"center",
+            }}>
+              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{c.title || "New chat"}</span>
+              <button onClick={(e)=>{e.stopPropagation();deleteConv(c.id);}} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer",fontSize:".7rem"}}>✕</button>
+            </div>
+          ))}
+        </div>
+        {/* team selector */}
+        <div style={{borderTop:"1px solid var(--border)",paddingTop:10,marginTop:8}}>
+          <div style={{fontSize:".6rem",color:"var(--muted)",marginBottom:6,letterSpacing:1.5}}>TEAM</div>
+          <select value={activeTeam?.id||""} onChange={e=>{const t=teams.find(x=>x.id===e.target.value); if(t) onSelectTeam(t);}}
+            style={{width:"100%",background:"var(--surface2)",border:"1px solid var(--border)",color:"var(--text)",borderRadius:8,padding:"6px 8px",fontFamily:"var(--font-m)",fontSize:".75rem"}}>
+            {teams.map(t=><option key={t.id} value={t.id}>{t.emoji} {t.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Main chat */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0}}>
+        <div style={{flex:1,overflowY:"auto",padding:"24px 20px"}}>
+          {messages.length===0 && phase==="idle" && (
+            <div style={{textAlign:"center",marginTop:"15vh",color:"var(--muted)"}}>
+              <div style={{fontSize:"2.4rem",marginBottom:12}}>🧠</div>
+              <div style={{fontFamily:"var(--font-h)",fontWeight:800,fontSize:"1.4rem",marginBottom:6}}>TeamAI</div>
+              <div style={{fontFamily:"var(--font-m)",fontSize:".8rem"}}>// ask anything · describe what to build · pick a team</div>
+            </div>
+          )}
+          {messages.map((m,i)=>(
+            <div key={i} style={{marginBottom:20,display:"flex",flexDirection:m.role==="user"?"row-reverse":"row",gap:10}}>
+              <div style={{width:32,height:32,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+                background: m.role==="user"?"linear-gradient(135deg,var(--accent),var(--accent2))":"var(--surface2)",
+                color: m.role==="user"?"#000":"var(--accent)",fontWeight:800,fontSize:".75rem"}}>
+                {m.role==="user"?"U":"AI"}
+              </div>
+              <div style={{maxWidth:"80%",padding:"12px 16px",borderRadius:12,fontFamily:"var(--font-m)",fontSize:".82rem",lineHeight:1.8,
+                background: m.role==="user"?"linear-gradient(135deg,var(--accent),var(--accent2))":"var(--surface)",
+                color: m.role==="user"?"#000":"var(--text)",border: m.role==="user"?"none":"1px solid var(--border)",whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+                {m.content}
+                {m.role==="assistant" && m.results && (
+                  <div style={{marginTop:12}}>
+                    {Object.keys(m.results).filter(k=>k!=="_final").map(k=>{
+                      const bot = activeTeam?.bots.find(b=>b.id===k);
+                      return bot && m.results[k] ? <ResultCard key={k} bot={bot} content={m.results[k]}/> : null;
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {phase==="thinking" && (
+            <div style={{display:"flex",gap:10,marginBottom:20}}>
+              <div style={{width:32,height:32,borderRadius:"50%",background:"var(--surface2)",color:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:".75rem"}}>AI</div>
+              <div style={{padding:"12px 16px",borderRadius:12,background:"var(--surface)",border:"1px solid var(--border)",fontFamily:"var(--font-m)",fontSize:".82rem",color:"var(--muted)"}}>
+                All {activeTeam?.bots.length} agents are thinking{dots}
+              </div>
+            </div>
+          )}
+          {phase==="synthesizing" && finalStreaming && (
+            <div style={{display:"flex",gap:10,marginBottom:20}}>
+              <div style={{width:32,height:32,borderRadius:"50%",background:"var(--surface2)",color:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:".75rem"}}>AI</div>
+              <div style={{maxWidth:"80%",padding:"12px 16px",borderRadius:12,background:"var(--surface)",border:"1px solid var(--border)",fontFamily:"var(--font-m)",fontSize:".82rem",color:"var(--text)",whiteSpace:"pre-wrap"}}>
+                {finalStreaming}<span className="typing-cursor"/>
+              </div>
+            </div>
+          )}
+          {error && <ErrorBanner error={error} onRetry={()=>build(lastIdea)} onDismiss={()=>setError("")}/>}
+          <div ref={endRef}/>
+        </div>
+
+        {/* Input */}
+        <div style={{borderTop:"1px solid var(--border)",padding:"12px 20px",background:"var(--surface)"}}>
+          <div style={{display:"flex",gap:8,alignItems:"flex-end",maxWidth:900,margin:"0 auto"}}>
+            <textarea className="chat-inp" rows={2} placeholder="Describe what to build or ask anything..."
+              value={input} onChange={e=>setInput(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
+              style={{flex:1}}/>
+            <button className="send-btn" onClick={submit} disabled={!input.trim()||phase==="thinking"||phase==="synthesizing"}>Send</button>
+          </div>
+          <div style={{textAlign:"center",marginTop:6,fontSize:".6rem",color:"var(--muted2)",fontFamily:"var(--font-m)"}}>
+            Enter to send · Shift+Enter for new line · {activeTeam?.bots.length} agents ready
+          </div>
+        </div>
+      </div>
+
+      {/* Agent panel */}
+      {showAgents && (
+        <div style={{width:280,borderLeft:"1px solid var(--border)",background:"var(--surface)",padding:12,overflowY:"auto",flexShrink:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:".7rem",fontWeight:800,color:"var(--muted)",letterSpacing:1.5}}>AGENTS</div>
+            <button onClick={()=>setShowAgents(false)} style={{background:"none",border:"none",color:"var(--muted)",cursor:"pointer"}}>✕</button>
+          </div>
+          {activeTeam?.bots.map(bot=>(
+            <div key={bot.id} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:12,padding:12,marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                <span style={{fontSize:"1.2rem"}}>{bot.emoji}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:".78rem",fontWeight:800}}>{bot.name}</div>
+                  <div style={{fontSize:".62rem",color:bot.color,fontFamily:"var(--font-m)"}}>{bot.role}</div>
+                </div>
+                <span style={{fontSize:".6rem",padding:"2px 8px",borderRadius:20,background:"rgba(255,255,255,.06)",color:"var(--muted)",fontFamily:"var(--font-m)"}}>
+                  {statuses[bot.id] || (phase==="idle"?"idle":"pending")}
+                </span>
+              </div>
+              {streamingResults[bot.id] && (
+                <div style={{fontSize:".65rem",color:"var(--muted)",fontFamily:"var(--font-m)",maxHeight:60,overflow:"hidden"}}>
+                  {streamingResults[bot.id].substring(0,120)}...
+                </div>
+              )}
+              <button className="chat-hist-btn" style={{marginTop:6,width:"100%"}} onClick={()=>setActiveBot(activeBot?.id===bot.id?null:bot)}>
+                {activeBot?.id===bot.id?"Close chat":"Chat with agent"}
+              </button>
+            </div>
+          ))}
+          {activeBot && <BotChat key={activeBot.id} bot={activeBot} idea={lastIdea||""} prevResult={streamingResults[activeBot.id]}/>}
+        </div>
+      )}
+      {!showAgents && (
+        <button onClick={()=>setShowAgents(true)} style={{position:"fixed",right:12,top:12,zIndex:50,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,padding:"6px 10px",cursor:"pointer",color:"var(--muted)",fontSize:".7rem"}}>Agents ▸</button>
+      )}
+    </div>
+  );
+}
+
 // ─── TEAMS PAGE ───
 function TeamsPage({ onSelect, customTeams, onDeleteCustom }) {
   const all=[...DEFAULT_TEAMS,...customTeams];
@@ -1248,7 +1524,7 @@ function TeamBuilder({ onSave }) {
 export default function App() {
   const [splash, setSplash] = useState(true);
   const [user, setUser] = useState(()=>Storage.getSession());
-  const [page, setPage] = useState("teams");
+  const [page, setPage] = useState("chat");
   const [team, setTeam] = useState(null);
   const [projects, setProjects] = useState(()=>Storage.getProjects());
   const [customTeams, setCustomTeams] = useState(()=>Storage.getCustomTeams());
@@ -1304,7 +1580,8 @@ export default function App() {
         theme={theme} onToggleTheme={toggleTheme}
         onLogout={()=>{Storage.clearSession();setUser(null);setTeam(null);setPage("teams");}}/>
       <div className="main">
-        {page==="teams"&&<TeamsPage customTeams={customTeams} onSelect={t=>{setTeam(t);setPage("team");}} onDeleteCustom={deleteCustomTeam}/>}
+        {page==="chat"&&<ChatPage team={team} teams={[...DEFAULT_TEAMS,...customTeams]} onSelectTeam={t=>{setTeam(t);}} onSaveProject={saveProject}/>}
+       {page==="teams"&&<TeamsPage customTeams={customTeams} onSelect={t=>{setTeam(t);setPage("team");}} onDeleteCustom={deleteCustomTeam}/>}
         {page==="team"&&team&&<TeamView team={team} onBack={()=>setPage("teams")} onSaveProject={saveProject}/>}
         {page==="dashboard"&&<Dashboard projects={projects} onOpen={p=>{setOpenProject(p);setPage("project");}} onDelete={deleteProject}/>}
         {page==="project"&&openProject&&<ProjectViewer project={openProject} teams={customTeams} onBack={()=>{setOpenProject(null);setPage("dashboard");}}/>}
@@ -1315,3 +1592,4 @@ export default function App() {
     </div>
   );
 }
+
