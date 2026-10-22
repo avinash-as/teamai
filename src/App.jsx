@@ -646,6 +646,7 @@ function Sidebar({ user, page, setPage, team, projects, theme, onToggleTheme, on
         {id:"dashboard",icon:"📁",label:"My Projects",badge:projects.length||null},
         {id:"builder",icon:"🛠️",label:"Build a Team"},
         {id:"agents",icon:"🤖",label:"Agents"},
+        {id:"providers",icon:"🔌",label:"AI Providers"},
         {id:"profile",icon:"👤",label:"My Profile"},
       ].map(item=>(
         <div key={item.id} className={`sb-item${page===item.id?" act":""}`} onClick={()=>setPage(item.id)}>
@@ -679,6 +680,7 @@ function MobileNav({ page, setPage, team, theme, onToggleTheme }) {
         {id:"teams",icon:"🏠",label:"Teams"},
         {id:"dashboard",icon:"📁",label:"Projects"},
         {id:"agents",icon:"🤖",label:"Agents"},
+        {id:"providers",icon:"🔌",label:"Providers"},
         {id:"profile",icon:"👤",label:"Profile"},
         ...(team?[{id:"team",icon:team.emoji,label:"Active"}]:[]),
       ].map(i=>(
@@ -1408,6 +1410,97 @@ function AgentsPage({ teams }) {
   );
 }
 
+// ─── AI PROVIDERS PAGE ───
+function ProvidersPage() {
+  const [ollama, setOllama] = useState({ connected: false, models: [], loading: true, baseUrl: "http://localhost:11434" });
+  const [opencode, setOpencode] = useState({ installed: false, loading: true });
+  const [baseUrl, setBaseUrl] = useState("http://localhost:11434");
+
+  const checkOllama = async () => {
+    setOllama(s => ({ ...s, loading: true }));
+    try {
+      const r = await fetch(`/api/ollama?baseUrl=${encodeURIComponent(baseUrl)}`);
+      const data = await r.json();
+      setOllama({ connected: data.connected, models: data.models || [], loading: false, baseUrl: data.baseUrl, error: data.error });
+    } catch (e) {
+      setOllama({ connected: false, models: [], loading: false, baseUrl, error: e.message });
+    }
+  };
+
+  const checkOpencode = async () => {
+    setOpencode(s => ({ ...s, loading: true }));
+    try {
+      const r = await fetch("/api/opencode");
+      const data = await r.json();
+      setOpencode({ installed: data.installed, version: data.version, loading: false, error: data.error, hint: data.hint });
+    } catch (e) {
+      setOpencode({ installed: false, loading: false, error: e.message });
+    }
+  };
+
+  useEffect(() => { const t = setTimeout(() => { checkOllama(); checkOpencode(); }, 0); return () => clearTimeout(t); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
+
+  const providers = [
+    { name: "Gemini", type: "Cloud", free: "Free tier", status: "Configure via GEMINI_API_KEY", paid: "May require billing for heavy use" },
+    { name: "Groq", type: "Cloud", free: "Free tier", status: "Configure via GROQ_API_KEY", paid: "Rate limits on free tier" },
+    { name: "OpenRouter", type: "Cloud", free: "Free models available", status: "Configure via OPENROUTER_API_KEY", paid: "Some models paid" },
+    { name: "Pollinations", type: "Cloud", free: "Free (no key)", status: "Always available", paid: "No" },
+    { name: "Ollama", type: "Local", free: "Free (local)", status: ollama.loading ? "Checking..." : (ollama.connected ? `Connected · ${ollama.models.length} models` : "Not running"), paid: "No (hardware cost only)" },
+    { name: "OpenCode", type: "Local CLI", free: "Depends on provider", status: opencode.loading ? "Checking..." : (opencode.installed ? `Installed ${opencode.version || ""}` : "Not installed"), paid: "Depends on configured model" },
+  ];
+
+  return (
+    <div>
+      <div className="ph fu"><div className="ph-title">AI Providers</div>
+        <div className="ph-sub">// connect local and cloud AI runtimes</div></div>
+
+      <div className="proj-grid fu2">
+        {providers.map(p => (
+          <div key={p.name} className="proj-card" style={{cursor:"default"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+              <span style={{fontSize:"1.5rem"}}>{p.type === "Local" || p.type === "Local CLI" ? "💻" : "☁️"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:".9rem",fontWeight:800}}>{p.name}</div>
+                <div style={{fontSize:".68rem",color:"var(--muted)",fontFamily:"var(--font-m)"}}>{p.type} · {p.free}</div>
+              </div>
+            </div>
+            <div style={{fontSize:".72rem",marginBottom:6}}><b>Status:</b> {p.status}</div>
+            <div style={{fontSize:".68rem",color:"var(--muted)",fontFamily:"var(--font-m)"}}>Paid usage: {p.paid}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Ollama config */}
+      <div className="builder-box fu3" style={{marginTop:20}}>
+        <h3>Ollama Configuration</h3>
+        <p>Connect to a local Ollama instance. Install from https://ollama.com</p>
+        <div className="field-row">
+          <div className="field finp-full">
+            <label>Base URL</label>
+            <input className="finp" value={baseUrl} onChange={e=>setBaseUrl(e.target.value)} placeholder="http://localhost:11434"/>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:10}}>
+          <button className="act-btn act-btn-primary" onClick={checkOllama}>Test Connection</button>
+          <button className="act-btn act-btn-sec" onClick={checkOpencode}>Check OpenCode</button>
+        </div>
+        {ollama.connected && ollama.models.length > 0 && (
+          <div style={{marginTop:12}}>
+            <div style={{fontSize:".7rem",fontWeight:800,color:"var(--muted)",marginBottom:6}}>AVAILABLE MODELS</div>
+            {ollama.models.map(m => (
+              <div key={m.name} style={{fontSize:".75rem",padding:"4px 0",borderBottom:"1px solid var(--border)",fontFamily:"var(--font-m)"}}>
+                {m.name} {m.parameterSize ? `(${m.parameterSize})` : ""}
+              </div>
+            ))}
+          </div>
+        )}
+        {ollama.error && <div className="err-msg" style={{marginTop:8}}>⚠ {ollama.error}</div>}
+        {opencode.error && <div className="err-msg" style={{marginTop:8}}>⚠ OpenCode: {opencode.error} {opencode.hint}</div>}
+      </div>
+    </div>
+  );
+}
+
 // ─── TEAMS PAGE ───
 function TeamsPage({ onSelect, customTeams, onDeleteCustom }) {
   const all=[...DEFAULT_TEAMS,...customTeams];
@@ -1730,6 +1823,7 @@ export default function App() {
         {page==="project"&&openProject&&<ProjectViewer project={openProject} teams={customTeams} onBack={()=>{setOpenProject(null);setPage("dashboard");}}/>}
         {page==="builder"&&<TeamBuilder onSave={t=>{saveCustomTeam(t);setCustomTeams(Storage.getCustomTeams());}}/>}
        {page==="agents"&&<AgentsPage teams={[...DEFAULT_TEAMS,...customTeams]}/>}
+       {page==="providers"&&<ProvidersPage/>}
         {page==="profile"&&<ProfilePage user={user} projects={projects} customTeams={customTeams}/>}
       </div>
       <MobileNav page={page} setPage={setPage} team={team} theme={theme} onToggleTheme={toggleTheme}/>
