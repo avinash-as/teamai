@@ -1,6 +1,8 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
+const { z } = require("zod");
 const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
@@ -10,6 +12,10 @@ const { runInSandbox, available: sandboxAvailable } = require("./sandbox.js");
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+app.use(limiter);
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 
 const PORT = process.env.SERVER_PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
@@ -60,12 +66,20 @@ function authMiddleware(req, res, next) {
   }
 }
 
-app.get("/health", (req, res) => res.json({ ok: true }));
+app.get("/health", async (req, res) => {
+  try { await pool.query("SELECT 1"); res.json({ ok: true, db: "connected" }); }
+  catch (e) { res.status(503).json({ ok: false, db: "disconnected", error: e.message }); }
+});
 
 // Auth
-app.post("/auth/register", async (req, res) => {
-  const { email, password, name } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: "email and password required" });
+const registerSchema = z.object({ email: z.string().email(), password: z.string().min(6), name: z.string().optional() });
+const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
+const projectSchema = z.object({ name: z.string().min(1), description: z.string().optional() });
+
+app.post("/auth/register", authLimiter, async (req, res) => {
+  const parsed = registerSchema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const { email, password, name } = parsed.data;
   try {
     const hash = await bcrypt.hash(password, 10);
     const { rows } = await pool.query(
@@ -81,8 +95,10 @@ app.post("/auth/register", async (req, res) => {
   }
 });
 
-app.post("/auth/login", async (req, res) => {
-  const { email, password } = req.body || {};
+app.post("/auth/login", authLimiter, async (req, res) => {
+  const parsed = loginSchema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const { email, password } = parsed.data;
   try {
     const { rows } = await pool.query("SELECT * FROM users WHERE email=$1", [email]);
     const user = rows[0];
@@ -114,8 +130,9 @@ app.get("/projects", authMiddleware, async (req, res) => {
 });
 
 app.post("/projects", authMiddleware, async (req, res) => {
-  const { name, description } = req.body || {};
-  if (!name) return res.status(400).json({ error: "name required" });
+  const parsed = projectSchema.safeParse(req.body || {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const { name, description } = parsed.data;
   try {
     const { rows } = await pool.query(
       "INSERT INTO projects (user_id,name,description) VALUES ($1,$2,$3) RETURNING *",
@@ -185,6 +202,13 @@ app.post("/sandbox/run", authMiddleware, async (req, res) => {
   }
 });
 app.get("/sandbox/status", (req, res) => res.json({ available: sandboxAvailable() }));
+
+// Centralized error handler
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(err.status || 500).json({ error: err.message || "Internal server error" });
+});
 
 initDb().then(() => {
   app.listen(PORT, () => console.log(`TeamAI API server listening on http://localhost:${PORT}`));
