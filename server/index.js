@@ -1,4 +1,8 @@
 require("dotenv").config();
+let Sentry = null;
+if (process.env.SENTRY_DSN) {
+  try { Sentry = require("@sentry/node"); Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch { Sentry = null; }
+}
 const express = require("express");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
@@ -207,6 +211,7 @@ app.get("/sandbox/status", (req, res) => res.json({ available: sandboxAvailable(
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error(err);
+  if (Sentry) Sentry.captureException(err);
   res.status(err.status || 500).json({ error: err.message || "Internal server error" });
 });
 
