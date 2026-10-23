@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "runtime": "node runtime/server.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "test": "vitest run",

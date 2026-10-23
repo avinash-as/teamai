@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, Component } from "react";
 import { Storage } from "./lib/storage.js";
 import { computeWaves } from "./lib/scheduler.js";
+import WorkspacePage from "./Workspace.jsx";
+import HomePage from "./Home.jsx";
 
 const FONTS = `@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400&display=swap');`;
 
@@ -642,6 +644,7 @@ function Sidebar({ user, page, setPage, team, projects, theme, onToggleTheme, on
       <div className="sb-ver">// v4.0 · multi-agent platform</div>
       <div className="sb-sec">Navigate</div>
       {[
+        {id:"home",icon:"🏠",label:"Home"},
         {id:"chat",icon:"💬",label:"Chat"},
         {id:"teams",icon:"🏠",label:"Browse Teams"},
         {id:"dashboard",icon:"📁",label:"My Projects",badge:projects.length||null},
@@ -649,6 +652,7 @@ function Sidebar({ user, page, setPage, team, projects, theme, onToggleTheme, on
         {id:"agents",icon:"🤖",label:"Agents"},
         {id:"providers",icon:"🔌",label:"AI Providers"},
         {id:"github",icon:"🐙",label:"GitHub Files"},
+        {id:"workspace",icon:"🗂️",label:"Local Workspace"},
         {id:"profile",icon:"👤",label:"My Profile"},
       ].map(item=>(
         <div key={item.id} className={`sb-item${page===item.id?" act":""}`} onClick={()=>setPage(item.id)}>
@@ -1044,6 +1048,12 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
   const [lastIdea, setLastIdea] = useState("");
   const endRef = useRef(null);
   const inputRef = useRef(null);
+  useEffect(() => {
+    try {
+      const p = sessionStorage.getItem("teamai_pending_prompt");
+      if (p) { setInput(p); sessionStorage.removeItem("teamai_pending_prompt"); }
+    } catch (e) { void e; }
+  }, []);
 
   const activeTeam = team || (teams && teams[0]) || null;
   const bots = (activeTeam?.bots || []).filter(b => (Storage.getAgentConfigs()[b.id]?.enabled ?? true));
@@ -1885,7 +1895,7 @@ function GitHubPage() {
 export default function App() {
   const [splash, setSplash] = useState(true);
   const [user, setUser] = useState(()=>Storage.getSession());
-  const [page, setPage] = useState("chat");
+  const [page, setPage] = useState("home");
   const [team, setTeam] = useState(null);
   const [projects, setProjects] = useState(()=>Storage.getProjects());
   const [customTeams, setCustomTeams] = useState(()=>Storage.getCustomTeams());
@@ -1956,6 +1966,7 @@ export default function App() {
         theme={theme} onToggleTheme={toggleTheme}
         onLogout={()=>{Storage.clearSession();setUser(null);setTeam(null);setPage("teams");}}/>
       <div className="main">
+        {page==="home"&&<HomePage onStart={()=>setPage("chat")}/>}
         {page==="chat"&&<ChatPage team={team} teams={applyAgentConfigs([...DEFAULT_TEAMS,...customTeams])} onSelectTeam={t=>{setTeam(t);}} onSaveProject={saveProject}/>}
        {page==="teams"&&<TeamsPage customTeams={customTeams} onSelect={t=>{setTeam(t);setPage("team");}} onDeleteCustom={deleteCustomTeam}/>}
         {page==="team"&&team&&<TeamView team={team} onBack={()=>setPage("teams")} onSaveProject={saveProject}/>}
@@ -1965,6 +1976,7 @@ export default function App() {
        {page==="agents"&&<AgentsPage teams={[...DEFAULT_TEAMS,...customTeams]}/>}
        {page==="providers"&&<ProvidersPage/>}
        {page==="github"&&<GitHubPage/>}
+        {page==="workspace"&&<WorkspacePage/>}
         {page==="profile"&&<ProfilePage user={user} projects={projects} customTeams={customTeams}/>}
       </div>
       <MobileNav page={page} setPage={setPage} team={team} theme={theme} onToggleTheme={toggleTheme}/>
