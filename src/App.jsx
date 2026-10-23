@@ -1059,6 +1059,7 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
   const [error, setError] = useState("");
   const [workingDots, setWorkingDots] = useState(0);
   const [lastIdea, setLastIdea] = useState("");
+  const abortRef = useRef(null);
   const endRef = useRef(null);
   const inputRef = useRef(null);
   useEffect(() => {
@@ -1142,6 +1143,9 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
 
   const build = async (idea) => {
     if (!idea.trim() || !activeTeam) return;
+    if (abortRef.current) abortRef.current.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
     setLastIdea(idea);
     const userMsg = { role: "user", content: idea, ts: new Date().toISOString() };
     const newMsgs = [...messages, userMsg];
@@ -1164,14 +1168,20 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
     // Compute execution waves (DAG scheduling) via scheduler util
     const waves = computeWaves(bots);
 
+    if (ac.signal.aborted) return;
     for (const wave of waves) {
+      if (ac.signal.aborted) { setPhase("cancelled"); return; }
       const wavePromises = wave.map(bot => {
         setStatuses(s => ({ ...s, [bot.id]: "running" }));
         const prevContext = deps(bot).map(d => all[d] ? `${d}: ${String(all[d]).substring(0, 500)}` : "").filter(Boolean).join("\n\n");
         const prompt = prevContext
           ? `${bot.collaborate}\n\nWork independently and deliver your complete expert contribution for this project.\n\nContext from prerequisite agents:\n${prevContext}`
           : `${bot.collaborate}\n\nWork independently and deliver your complete expert contribution for this project.`;
-        return callClaude(prompt, [{ role: "user", content: idea }])
+        const runWithRetry = async (n = 0) => {
+          try { return await callClaude(prompt, [{ role: "user", content: idea }]); }
+          catch (e) { if (n < 2 && !ac.signal.aborted) { await new Promise(r=>setTimeout(r,1000*(n+1))); return runWithRetry(n+1); } throw e; }
+        };
+        return runWithRetry()
           .then(result => {
             if (result.startsWith("Error:")) { hasError = true; setStatuses(s => ({ ...s, [bot.id]: "failed" })); }
             else setStatuses(s => ({ ...s, [bot.id]: "completed" }));
@@ -1195,6 +1205,7 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
       setError(errEntry ? String(errEntry[1]).replace("Error: ","") : "One or more agents failed.");
     }
 
+    if (ac.signal.aborted) { setPhase("cancelled"); return; }
     setPhase("synthesizing");
     const allContribs = bots.map(b =>
       `${b.emoji} ${b.name} (${b.role}):\n${all[b.id] || ""}`
