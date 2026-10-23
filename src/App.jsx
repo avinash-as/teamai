@@ -1044,8 +1044,8 @@ function TeamView({ team, onBack, onSaveProject }) {
 // ─── CHAT PAGE (ChatGPT-style multi-agent) ───
 function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
   const [conversations, setConversations] = useState(()=>Storage.getConversations());
-  const [activeId, setActiveId] = useState(()=>Storage.getConversations()[0]?.id || null);
-  const [messages, setMessages] = useState(()=>{const c=Storage.getConversations()[0];return c?c.messages:[];});
+  const [activeId, setActiveId] = useState(null);
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [phase, setPhase] = useState("idle"); // idle | thinking | synthesizing | done | error
   const [streamingResults, setStreamingResults] = useState({});
@@ -1078,10 +1078,18 @@ function ChatPage({ team, teams, onSelectTeam, onSaveProject }) {
   }, [phase]);
 
   const persistConv = (msgs) => {
-    if (!activeId) return;
-    const convs = Storage.getConversations();
-    const c = convs.find(x=>x.id===activeId);
-    if (c) { c.messages = msgs; c.updatedAt = new Date().toISOString(); Storage.saveConversation(c); setConversations(Storage.getConversations()); }
+    let id = activeId;
+    if (!id) {
+      id = Date.now().toString();
+      const c = { id, title: "New chat", messages: msgs, teamId: activeTeam?.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      Storage.saveConversation(c);
+      setActiveId(id);
+    } else {
+      const convs = Storage.getConversations();
+      const c = convs.find(x=>x.id===id);
+      if (c) { c.messages = msgs; c.updatedAt = new Date().toISOString(); Storage.saveConversation(c); }
+    }
+    setConversations(Storage.getConversations());
   };
 
   const newChat = () => {
