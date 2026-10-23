@@ -1,7 +1,7 @@
-import { execFile } from "node:child_process";
+import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
-const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   // Detect opencode installation
   if (req.method === "GET" || req.body?.action === "detect") {
     try {
-      const { stdout } = await execFileAsync("opencode", ["--version"], { timeout: 5000 });
+      const { stdout } = await execAsync("opencode --version", { timeout: 5000 });
       return res.status(200).json({ installed: true, version: stdout.trim() });
     } catch (e) {
       return res.status(200).json({ installed: false, error: e.message, hint: "Install from https://opencode.ai" });
@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     try {
       const args = ["run", task];
       if (model) args.push("--model", model);
-      const { stdout, stderr } = await execFileAsync("opencode", args, {
+      const { stdout, stderr } = await execAsync("opencode " + args.map(a => JSON.stringify(a)).join(" "), {
         cwd: cwd || process.cwd(),
         timeout: 300000,
         maxBuffer: 10 * 1024 * 1024,

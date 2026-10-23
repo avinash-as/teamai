@@ -530,7 +530,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-h);overflow-x
 
 // ─── TOAST ───
 function Toast({ msg, type = "success", onHide }) {
-  useEffect(() => { const t = setTimeout(onHide, 3000); return () => clearTimeout(t); }, []);
+  useEffect(() => { const t = setTimeout(onHide, 3000); return () => clearTimeout(t); }, [onHide]);
   return <div className={`toast${type === "error" ? " err" : ""}`}>{msg}</div>;
 }
 
