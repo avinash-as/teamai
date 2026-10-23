@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Editor from "@monaco-editor/react";
 
 const RUNTIME_DEFAULT = "http://localhost:3002";
 
@@ -144,8 +145,10 @@ export default function WorkspacePage() {
           {selectedFile && (
             <div style={{flex:2,minWidth:300}}>
               <div style={{fontSize:".75rem",fontWeight:800,marginBottom:6}}>{selectedFile}</div>
-              <textarea className="finp" rows={16} value={editContent} onChange={e=>setEditContent(e.target.value)}
-                style={{fontFamily:"var(--font-m)",fontSize:".75rem",width:"100%"}}/>
+              <div style={{border:"1px solid var(--border)",borderRadius:8,overflow:"hidden"}}>
+                <Editor height="420px" defaultLanguage="javascript" value={editContent} onChange={(v)=>setEditContent(v||"")}
+                  theme="vs-dark" options={{ minimap:{enabled:false}, fontSize:13, wordWrap:"on" }}/>
+              </div>
               <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
                 <button className="act-btn act-btn-primary" onClick={saveFile} disabled={loading}>Save</button>
                 <button className="act-btn act-btn-sec" onClick={()=>setEditContent(content)} disabled={loading}>Revert</button>
