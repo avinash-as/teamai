@@ -160,6 +160,8 @@ export default async function handler(req, res) {
     const text = await freeGenerate();
     return streamText(text);
   } catch (e) {
-    return res.status(500).json({ error: e.message, hint: "All AI providers failed. Add GEMINI_API_KEY or GROQ_API_KEY for better results." });
+    // Never surface a 500 to the client for AI provider failures; return a
+    // friendly message so the UI keeps working.
+    return streamText(`⚠️ The free AI provider is temporarily unavailable (${e.message}).\n\nAdd a GEMINI_API_KEY or GROQ_API_KEY to .env for a more reliable experience.`);
   }
 }
