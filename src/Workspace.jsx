@@ -1,5 +1,5 @@
 import { useState } from "react";
-import Editor from "@monaco-editor/react";
+import Editor, { DiffEditor } from "@monaco-editor/react";
 
 const RUNTIME_DEFAULT = "http://localhost:3002";
 
@@ -13,6 +13,7 @@ export default function WorkspacePage() {
   const [selectedFile, setSelectedFile] = useState("");
   const [content, setContent] = useState("");
   const [editContent, setEditContent] = useState("");
+  const [showDiff, setShowDiff] = useState(false);
   const [command, setCommand] = useState("");
   const [cmdOutput, setCmdOutput] = useState("");
   const [editor, setEditor] = useState("vscode");
@@ -145,9 +146,18 @@ export default function WorkspacePage() {
           {selectedFile && (
             <div style={{flex:2,minWidth:300}}>
               <div style={{fontSize:".75rem",fontWeight:800,marginBottom:6}}>{selectedFile}</div>
+              <div style={{display:"flex",gap:8,marginBottom:8}}>
+                <button className="chat-hist-btn" onClick={()=>setShowDiff(false)}>Edit</button>
+                <button className="chat-hist-btn" onClick={()=>setShowDiff(true)}>Diff</button>
+              </div>
               <div style={{border:"1px solid var(--border)",borderRadius:8,overflow:"hidden"}}>
-                <Editor height="420px" defaultLanguage="javascript" value={editContent} onChange={(v)=>setEditContent(v||"")}
-                  theme="vs-dark" options={{ minimap:{enabled:false}, fontSize:13, wordWrap:"on" }}/>
+                {showDiff ? (
+                  <DiffEditor height="420px" original={content} modified={editContent}
+                    language="javascript" theme="vs-dark" options={{ minimap:{enabled:false}, fontSize:13, wordWrap:"on", readOnly:true }}/>
+                ) : (
+                  <Editor height="420px" defaultLanguage="javascript" value={editContent} onChange={(v)=>setEditContent(v||"")}
+                    theme="vs-dark" options={{ minimap:{enabled:false}, fontSize:13, wordWrap:"on" }}/>
+                )}
               </div>
               <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
                 <button className="act-btn act-btn-primary" onClick={saveFile} disabled={loading}>Save</button>
