@@ -7,7 +7,17 @@ import App from './App.jsx'
 // cached responses (e.g. 500s) don't shadow the live Vite dev server.
 if (import.meta.env.DEV && 'serviceWorker' in navigator) {
   navigator.serviceWorker.getRegistrations().then((regs) => {
-    regs.forEach((r) => r.unregister());
+    if (regs.length) {
+      regs.forEach((r) => r.unregister());
+      if (window.caches) {
+        caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
+      }
+      // Reload once so the page is no longer controlled by the old SW.
+      if (!sessionStorage.getItem('sw-cleared')) {
+        sessionStorage.setItem('sw-cleared', '1');
+        window.location.reload();
+      }
+    }
   }).catch(() => {});
   if (window.caches) {
     caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
