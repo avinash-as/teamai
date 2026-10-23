@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { buildProject, writePlanToRuntime } from "./orchestrator.js";
+import { buildProjectViaBackend } from "./backendBuild.js";
 
 export default function HomePage({ onStart }) {
   const [prompt, setPrompt] = useState("");
@@ -23,8 +24,15 @@ export default function HomePage({ onStart }) {
     if (!root.trim()) { setProgress("Enter a workspace root path first."); return; }
     setBuilding(true); setResult(null); setProgress("Starting...");
     try {
-      const plan = await buildProject(text, (t) => setProgress(typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.status})`));
-      setProgress(`Plan ready: ${plan.files.length} files. Writing...`);
+      let plan;
+      try {
+        plan = await buildProjectViaBackend(text, (t) => setProgress(t));
+        setProgress(`Plan ready: ${plan.files.length} files. Writing...`);
+      } catch (e) {
+        void e;
+        plan = await buildProject(text, (t) => setProgress(typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.status})`));
+        setProgress(`Plan ready: ${plan.files.length} files. Writing...`);
+      }
       const res = await writePlanToRuntime(plan, runtimeUrl, root.trim(), (t) => setProgress(typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.progress || t.status})`));
       setResult({ plan, res });
       setProgress(`Done: ${res.length} files written to ${root}`);
