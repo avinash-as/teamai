@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Component } from "react";
 import { Storage } from "./lib/storage.js";
+import { login as apiLogin, register as apiRegister, me as apiMe, getToken, clearToken } from "./auth.js";
 import { computeWaves } from "./lib/scheduler.js";
 import WorkspacePage from "./Workspace.jsx";
 import HomePage from "./Home.jsx";
@@ -579,16 +580,29 @@ function Login({ onLogin }) {
   const [pErr, setPErr] = useState("");
   const [authErr, setAuthErr] = useState("");
 
-  const go = () => {
+  const go = async () => {
     setAuthErr("");
     const ee = !email ? "Email is required" : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? "Enter a valid email" : "";
     const pe = pass.length < 6 ? "Password must be at least 6 characters" : "";
     setEErr(ee); setPErr(pe);
     if (ee || pe) return;
 
+    // Try backend auth first; fall back to local storage if backend unavailable.
+    try {
+      const res = reg
+        ? await apiRegister(email, pass, name || email.split("@")[0])
+        : await apiLogin(email, pass);
+      const sessionUser = { name: res.user.name, email: res.user.email, id: res.user.id };
+      Storage.saveSession(sessionUser);
+      onLogin(sessionUser);
+      return;
+    } catch (e) {
+      void e;
+      // Backend unavailable or failed; fall back to local auth.
+    }
+
     const users = Storage.getUsers();
     if (reg) {
-      // Register
       if (users.find(u => u.email === email)) { setAuthErr("An account with this email already exists."); return; }
       const newUser = { name: name || email.split("@")[0], email, passHash: simpleHash(pass), createdAt: new Date().toISOString() };
       Storage.saveUser(newUser);
@@ -596,7 +610,6 @@ function Login({ onLogin }) {
       Storage.saveSession(sessionUser);
       onLogin(sessionUser);
     } else {
-      // Login
       const user = users.find(u => u.email === email);
       if (!user) { setAuthErr("No account found. Please register first."); return; }
       if (user.passHash !== simpleHash(pass)) { setAuthErr("Incorrect password. Please try again."); return; }
@@ -1895,6 +1908,12 @@ function GitHubPage() {
 export default function App() {
   const [splash, setSplash] = useState(true);
   const [user, setUser] = useState(()=>Storage.getSession());
+  useEffect(() => {
+    const t = getToken();
+    if (!t) return;
+    apiMe().then(d => { if (d?.user) setUser({ name: d.user.name, email: d.user.email, id: d.user.id }); })
+      .catch(() => { clearToken(); });
+  }, []);
   const [page, setPage] = useState("home");
   const [team, setTeam] = useState(null);
   const [projects, setProjects] = useState(()=>Storage.getProjects());
