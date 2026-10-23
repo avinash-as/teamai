@@ -8,6 +8,7 @@ export default function HomePage({ onStart }) {
   const [runtimeUrl, setRuntimeUrl] = useState("http://localhost:3002");
   const [building, setBuilding] = useState(false);
   const [progress, setProgress] = useState("");
+  const [events, setEvents] = useState([]);
   const [result, setResult] = useState(null);
 
   const submit = (e) => {
@@ -22,18 +23,18 @@ export default function HomePage({ onStart }) {
     const text = prompt.trim();
     if (!text) return;
     if (!root.trim()) { setProgress("Enter a workspace root path first."); return; }
-    setBuilding(true); setResult(null); setProgress("Starting...");
+    setBuilding(true); setResult(null); setProgress("Starting..."); setEvents([]);
     try {
       let plan;
       try {
-        plan = await buildProjectViaBackend(text, (t) => setProgress(t));
+        plan = await buildProjectViaBackend(text, (t) => { setProgress(t); setEvents((p) => [...p, typeof t === "string" ? { title: t } : t]); });
         setProgress(`Plan ready: ${plan.files.length} files. Writing...`);
       } catch (e) {
         void e;
-        plan = await buildProject(text, (t) => setProgress(typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.status})`));
+        plan = await buildProject(text, (t) => { const m = typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.status})`; setProgress(m); setEvents((p) => [...p, typeof t === "string" ? { title: t } : t]); });
         setProgress(`Plan ready: ${plan.files.length} files. Writing...`);
       }
-      const res = await writePlanToRuntime(plan, runtimeUrl, root.trim(), (t) => setProgress(typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.progress || t.status})`));
+      const res = await writePlanToRuntime(plan, runtimeUrl, root.trim(), (t) => { const m = typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.progress || t.status})`; setProgress(m); setEvents((p) => [...p, typeof t === "string" ? { title: t } : t]); });
       setResult({ plan, res });
       setProgress(`Done: ${res.length} files written to ${root}`);
     } catch (e) {
@@ -86,6 +87,11 @@ export default function HomePage({ onStart }) {
           {building ? "Building..." : "Build Project"}
         </button>
         {progress && <div style={{marginTop:8,fontSize:".72rem",fontFamily:"var(--font-m)",color:"var(--muted)"}}>{progress}</div>}
+        {events.length > 0 && (
+          <div style={{marginTop:8,maxHeight:160,overflow:"auto",background:"var(--surface2)",borderRadius:8,padding:8,fontFamily:"var(--font-m)",fontSize:".68rem"}}>
+            {events.map((e,i) => <div key={i} style={{padding:"2px 0"}}>{e.agent ? `[${e.agent}] ${e.title} (${e.status||e.progress||""})` : e.title}</div>)}
+          </div>
+        )}
         {result && (
           <div style={{marginTop:8,fontSize:".72rem",fontFamily:"var(--font-m)",color:"var(--green)"}}>
             Created {result.plan.projectName}: {result.res.map(f=>f.path).join(", ")}
