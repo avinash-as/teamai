@@ -1,13 +1,38 @@
 import { useState } from "react";
+import { buildProject, writePlanToRuntime } from "./orchestrator.js";
 
 export default function HomePage({ onStart }) {
   const [prompt, setPrompt] = useState("");
+  const [root, setRoot] = useState("");
+  const [runtimeUrl, setRuntimeUrl] = useState("http://localhost:3002");
+  const [building, setBuilding] = useState(false);
+  const [progress, setProgress] = useState("");
+  const [result, setResult] = useState(null);
+
   const submit = (e) => {
     e?.preventDefault();
     const text = prompt.trim();
     if (!text) return;
     try { sessionStorage.setItem("teamai_pending_prompt", text); } catch (e) { void e; }
     onStart?.(text);
+  };
+
+  const build = async () => {
+    const text = prompt.trim();
+    if (!text) return;
+    if (!root.trim()) { setProgress("Enter a workspace root path first."); return; }
+    setBuilding(true); setResult(null); setProgress("Starting...");
+    try {
+      const plan = await buildProject(text, setProgress);
+      setProgress(`Plan ready: ${plan.files.length} files. Writing...`);
+      const res = await writePlanToRuntime(plan, runtimeUrl, root.trim(), setProgress);
+      setResult({ plan, res });
+      setProgress(`Done: ${res.length} files written to ${root}`);
+    } catch (e) {
+      setProgress(`Error: ${e.message}`);
+    } finally {
+      setBuilding(false);
+    }
   };
   return (
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative",zIndex:1}}>
@@ -41,6 +66,23 @@ export default function HomePage({ onStart }) {
         {["Build a complete MERN stack app","Create a responsive landing page","Build a REST API with auth","Fix a bug in my project"].map(s=>(
           <button key={s} className="chip" onClick={()=>setPrompt(s)}>{s}</button>
         ))}
+      </div>
+
+      <div style={{marginTop:32,width:"100%",maxWidth:720,background:"var(--card-bg)",border:"1px solid var(--border)",borderRadius:16,padding:16}}>
+        <div style={{fontSize:".72rem",fontWeight:800,color:"var(--muted)",marginBottom:8,letterSpacing:1.5}}>BUILD TO WORKSPACE</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <input className="finp" style={{flex:1,minWidth:180}} value={runtimeUrl} onChange={e=>setRuntimeUrl(e.target.value)} placeholder="Runtime URL"/>
+          <input className="finp" style={{flex:2,minWidth:220}} value={root} onChange={e=>setRoot(e.target.value)} placeholder="Workspace root (absolute path)"/>
+        </div>
+        <button className="build-btn" style={{marginTop:10}} onClick={build} disabled={building || !prompt.trim() || !root.trim()}>
+          {building ? "Building..." : "Build Project"}
+        </button>
+        {progress && <div style={{marginTop:8,fontSize:".72rem",fontFamily:"var(--font-m)",color:"var(--muted)"}}>{progress}</div>}
+        {result && (
+          <div style={{marginTop:8,fontSize:".72rem",fontFamily:"var(--font-m)",color:"var(--green)"}}>
+            Created {result.plan.projectName}: {result.res.map(f=>f.path).join(", ")}
+          </div>
+        )}
       </div>
     </div>
   );
