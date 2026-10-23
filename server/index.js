@@ -5,6 +5,7 @@ const { Pool } = require("pg");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { callModel } = require("./providers.js");
+const { runInSandbox, available: sandboxAvailable } = require("./sandbox.js");
 
 const app = express();
 app.use(cors());
@@ -170,6 +171,20 @@ app.post("/build", authMiddleware, async (req, res) => {
     res.end();
   }
 });
+
+// Sandbox endpoint
+app.post("/sandbox/run", authMiddleware, async (req, res) => {
+  const { code, language } = req.body || {};
+  if (!code) return res.status(400).json({ error: "code required" });
+  if (!sandboxAvailable()) return res.status(503).json({ error: "E2B not configured" });
+  try {
+    const result = await runInSandbox(code, language);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.get("/sandbox/status", (req, res) => res.json({ available: sandboxAvailable() }));
 
 initDb().then(() => {
   app.listen(PORT, () => console.log(`TeamAI API server listening on http://localhost:${PORT}`));
