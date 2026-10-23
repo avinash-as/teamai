@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, Component } from "react";
 import { Storage } from "./lib/storage.js";
-import { login as apiLogin, register as apiRegister, me as apiMe, getToken, clearToken } from "./auth.js";
+import { login as apiLogin, register as apiRegister, me as apiMe, getToken, clearToken, fetchProjects, createProject } from "./auth.js";
 import { computeWaves } from "./lib/scheduler.js";
 import WorkspacePage from "./Workspace.jsx";
 import HomePage from "./Home.jsx";
@@ -1914,9 +1914,19 @@ export default function App() {
     apiMe().then(d => { if (d?.user) setUser({ name: d.user.name, email: d.user.email, id: d.user.id }); })
       .catch(() => { clearToken(); });
   }, []);
+
   const [page, setPage] = useState("home");
   const [team, setTeam] = useState(null);
   const [projects, setProjects] = useState(()=>Storage.getProjects());
+  useEffect(() => {
+    if (!getToken()) return;
+    fetchProjects().then(d => {
+      if (d?.projects?.length) {
+        d.projects.forEach(p => Storage.saveProject({ id: String(p.id), title: p.name, idea: p.description, createdAt: p.created_at }));
+        setProjects(Storage.getProjects());
+      }
+    }).catch(() => {});
+  }, [user]);
   const [customTeams, setCustomTeams] = useState(()=>Storage.getCustomTeams());
   const [openProject, setOpenProject] = useState(null);
   const [theme, setTheme] = useState(()=>Storage.getTheme());
@@ -1968,7 +1978,8 @@ export default function App() {
     setTheme(next); Storage.saveTheme(next);
   };
 
-  const saveProject=(p)=>{Storage.saveProject(p);setProjects(Storage.getProjects());};
+  const saveProject=(p)=>{Storage.saveProject(p);setProjects(Storage.getProjects());
+    if (getToken()) createProject(p.title||"Untitled", p.idea||"").catch(()=>{});};
   const deleteProject=(id)=>{Storage.deleteProject(id);setProjects(Storage.getProjects());};
   const saveCustomTeam=(t)=>{Storage.saveCustomTeam(t);setCustomTeams(Storage.getCustomTeams());};
   const deleteCustomTeam=(id)=>{Storage.deleteCustomTeam(id);setCustomTeams(Storage.getCustomTeams());};
