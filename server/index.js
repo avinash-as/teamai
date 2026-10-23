@@ -12,6 +12,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { callModel } = require("./providers.js");
 const { runInSandbox, available: sandboxAvailable } = require("./sandbox.js");
+const { runDAG } = require("./dag.js");
 
 const app = express();
 app.use(cors());
@@ -161,31 +162,50 @@ app.post("/build", authMiddleware, async (req, res) => {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
+  const extract = (raw) => { const m = (raw || "").match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; };
 
-  const extract = (raw) => { const m = raw.match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; };
+  const tasks = [
+    { id: "planner", dependsOn: [] },
+    { id: "architect", dependsOn: ["planner"] },
+    { id: "developer", dependsOn: ["architect"] },
+    { id: "reviewer", dependsOn: ["developer"] },
+  ];
+
+  const executors = {
+    planner: async () => {
+      send({ type: "progress", agent: "planner", status: "running", title: "Planning" });
+      const raw = await callModel("You are the Planner Agent. Output ONLY JSON: { \"goal\": string, \"tasks\": [] }", [{ role: "user", content: prompt }]);
+      const plan = extract(raw) || { goal: prompt, tasks: [] };
+      send({ type: "progress", agent: "planner", status: "done", title: "Planning", output: plan });
+      return plan;
+    },
+    architect: async (_t, ctx) => {
+      send({ type: "progress", agent: "architect", status: "running", title: "Designing structure" });
+      const raw = await callModel("You are the Architect Agent. Output ONLY JSON: { \"projectName\": string, \"structure\": [string], \"techStack\": [string] }", [{ role: "user", content: JSON.stringify({ goal: ctx.planner?.goal }) }]);
+      const architect = extract(raw) || { projectName: "project", structure: [], techStack: [] };
+      send({ type: "progress", agent: "architect", status: "done", title: "Designing structure", output: architect });
+      return architect;
+    },
+    developer: async (_t, ctx) => {
+      send({ type: "progress", agent: "developer", status: "running", title: "Generating files" });
+      const raw = await callModel("You are the Developer Agent. Output ONLY JSON: { \"files\": [ { \"path\": string, \"content\": string } ] }", [{ role: "user", content: JSON.stringify({ goal: ctx.planner?.goal, architect: ctx.architect }) }]);
+      const developer = extract(raw) || { files: [] };
+      send({ type: "progress", agent: "developer", status: "done", title: "Generating files", output: { fileCount: developer.files?.length || 0 } });
+      return developer;
+    },
+    reviewer: async (_t, ctx) => {
+      send({ type: "progress", agent: "reviewer", status: "running", title: "Reviewing" });
+      const raw = await callModel("You are the Code Review Agent. Output ONLY JSON: { \"approved\": boolean, \"issues\": [string], \"suggestions\": [string] }", [{ role: "user", content: JSON.stringify({ files: ctx.developer?.files }) }]);
+      const review = extract(raw) || { approved: true, issues: [], suggestions: [] };
+      send({ type: "progress", agent: "reviewer", status: "done", title: "Reviewing", output: review });
+      return review;
+    },
+  };
 
   try {
-    send({ type: "progress", agent: "planner", status: "running", title: "Planning" });
-    const planRaw = await callModel("You are the Planner Agent. Output ONLY JSON: { \"goal\": string, \"tasks\": [] }", [{ role: "user", content: prompt }]);
-    const plan = extract(planRaw) || { goal: prompt, tasks: [] };
-    send({ type: "progress", agent: "planner", status: "done", title: "Planning", output: plan });
-
-    send({ type: "progress", agent: "architect", status: "running", title: "Designing structure" });
-    const archRaw = await callModel("You are the Architect Agent. Output ONLY JSON: { \"projectName\": string, \"structure\": [string], \"techStack\": [string] }", [{ role: "user", content: JSON.stringify({ goal: plan.goal }) }]);
-    const architect = extract(archRaw) || { projectName: "project", structure: [], techStack: [] };
-    send({ type: "progress", agent: "architect", status: "done", title: "Designing structure", output: architect });
-
-    send({ type: "progress", agent: "developer", status: "running", title: "Generating files" });
-    const devRaw = await callModel("You are the Developer Agent. Output ONLY JSON: { \"files\": [ { \"path\": string, \"content\": string } ] }", [{ role: "user", content: JSON.stringify({ goal: plan.goal, architect }) }]);
-    const developer = extract(devRaw) || { files: [] };
-    send({ type: "progress", agent: "developer", status: "done", title: "Generating files", output: { fileCount: developer.files?.length || 0 } });
-
-    send({ type: "progress", agent: "reviewer", status: "running", title: "Reviewing" });
-    const revRaw = await callModel("You are the Code Review Agent. Output ONLY JSON: { \"approved\": boolean, \"issues\": [string], \"suggestions\": [string] }", [{ role: "user", content: JSON.stringify({ files: developer.files }) }]);
-    const review = extract(revRaw) || { approved: true, issues: [], suggestions: [] };
-    send({ type: "progress", agent: "reviewer", status: "done", title: "Reviewing", output: review });
-
-    send({ type: "result", projectName: architect.projectName, files: developer.files || [], review });
+    const { results, failed } = await runDAG(tasks, (t, ctx) => executors[t.id](t, ctx), { retries: 2 });
+    if (failed.length) send({ type: "warning", message: `Some agents failed: ${failed.join(", ")}` });
+    send({ type: "result", projectName: results.architect?.projectName || "project", files: results.developer?.files || [], review: results.reviewer });
     res.end();
   } catch (e) {
     send({ type: "error", message: e.message });
