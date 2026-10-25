@@ -1,26 +1,18 @@
-require("dotenv").config();
-let Sentry = null;
-if (process.env.SENTRY_DSN) {
-  try { Sentry = require("@sentry/node"); Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch { Sentry = null; }
-}
-const express = require("express");
-const cors = require("cors");
-const rateLimit = require("express-rate-limit");
-const { z } = require("zod");
-const { Pool } = require("pg");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const { callModel } = require("./providers.js");
-const { runInSandbox, available: sandboxAvailable } = require("./sandbox.js");
-const { runDAG } = require("./dag.js");
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
+import { z } from "zod";
+import { Pool } from "pg";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { callModel } from "./providers.js";
+import { runInSandbox, available as sandboxAvailable } from "./sandbox.js";
+import { runDAG } from "./dag.js";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
-app.use(limiter);
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 
 const PORT = process.env.SERVER_PORT || 4000;
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
@@ -29,6 +21,15 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: false } : false,
 });
+
+const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+app.use(limiter);
+const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
+
+let Sentry = null;
+if (process.env.SENTRY_DSN) {
+  try { Sentry = await import("@sentry/node"); Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch { Sentry = null; }
+}
 
 async function initDb() {
   await pool.query(`
@@ -76,7 +77,6 @@ app.get("/health", async (req, res) => {
   catch (e) { res.status(503).json({ ok: false, db: "disconnected", error: e.message }); }
 });
 
-// Auth
 const registerSchema = z.object({ email: z.string().email(), password: z.string().min(6), name: z.string().optional() });
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
 const projectSchema = z.object({ name: z.string().min(1), description: z.string().optional() });
@@ -126,7 +126,6 @@ app.get("/auth/me", authMiddleware, async (req, res) => {
   }
 });
 
-// Projects
 app.get("/projects", authMiddleware, async (req, res) => {
   try {
     const { rows } = await pool.query("SELECT * FROM projects WHERE user_id=$1 ORDER BY updated_at DESC", [req.user.id]);
@@ -154,7 +153,19 @@ app.delete("/projects/:id", authMiddleware, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Multi-agent build endpoint (SSE)
+app.post("/sandbox/run", authMiddleware, async (req, res) => {
+  const { code, language } = req.body || {};
+  if (!code) return res.status(400).json({ error: "code required" });
+  if (!sandboxAvailable()) return res.status(503).json({ error: "E2B not configured" });
+  try {
+    const result = await runInSandbox(code, language);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+app.get("/sandbox/status", (req, res) => res.json({ available: sandboxAvailable() }));
+
 app.post("/build", authMiddleware, async (req, res) => {
   const { prompt } = req.body || {};
   if (!prompt) return res.status(400).json({ error: "prompt required" });
@@ -213,20 +224,6 @@ app.post("/build", authMiddleware, async (req, res) => {
   }
 });
 
-// Sandbox endpoint
-app.post("/sandbox/run", authMiddleware, async (req, res) => {
-  const { code, language } = req.body || {};
-  if (!code) return res.status(400).json({ error: "code required" });
-  if (!sandboxAvailable()) return res.status(503).json({ error: "E2B not configured" });
-  try {
-    const result = await runInSandbox(code, language);
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-app.get("/sandbox/status", (req, res) => res.json({ available: sandboxAvailable() }));
-
 // Centralized error handler
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
@@ -235,9 +232,14 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || "Internal server error" });
 });
 
-initDb().then(() => {
+if (process.env.DATABASE_URL) {
+  initDb().then(() => {
+    app.listen(PORT, () => console.log(`TeamAI API server listening on http://localhost:${PORT}`));
+  }).catch((e) => {
+    console.error("DB init failed:", e.message);
+    process.exit(1);
+  });
+} else {
+  console.warn("DATABASE_URL not set; starting without DB (auth/projects disabled).");
   app.listen(PORT, () => console.log(`TeamAI API server listening on http://localhost:${PORT}`));
-}).catch((e) => {
-  console.error("DB init failed:", e.message);
-  process.exit(1);
-});
+}

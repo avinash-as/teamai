@@ -1,4 +1,3 @@
-// CommonJS provider abstraction for the backend server.
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function withRetry(fn, attempts = 2) {
@@ -66,4 +65,4 @@ async function callModel(system, messages) {
   throw new Error(errs.join("\n"));
 }
 
-module.exports = { callModel };
+export { callModel };

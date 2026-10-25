@@ -1,4 +1,3 @@
-// Generic DAG task runner for backend multi-agent pipelines.
 async function runDAG(tasks, executor, { retries = 2, signal } = {}) {
   const results = {};
   const remaining = [...tasks];
@@ -8,7 +7,6 @@ async function runDAG(tasks, executor, { retries = 2, signal } = {}) {
     if (signal?.aborted) throw new Error("Cancelled");
     const wave = remaining.filter((t) => (t.dependsOn || []).every((d) => done.has(d) || failed.has(d)));
     if (wave.length === 0) {
-      // circular dependency: run remaining in parallel
       wave.push(...remaining);
     }
     await Promise.all(wave.map(async (t) => {
@@ -34,4 +32,4 @@ async function runDAG(tasks, executor, { retries = 2, signal } = {}) {
   return { results, failed: [...failed] };
 }
 
-module.exports = { runDAG };
+export { runDAG };

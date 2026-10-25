@@ -33,7 +33,7 @@ export default defineConfig([
   },
   {
     files: ['server/**/*.js'],
-    languageOptions: { globals: globals.node, sourceType: 'commonjs' },
+    languageOptions: { globals: globals.node, sourceType: 'module' },
   },
   {
     files: ['runtime/**/*.mjs'],

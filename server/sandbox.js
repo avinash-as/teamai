@@ -1,4 +1,6 @@
-// Optional cloud sandbox via E2B. Falls back gracefully if not configured.
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+
 let Sandbox = null;
 try { Sandbox = require("@e2b/code-interpreter").Sandbox; } catch { Sandbox = null; }
 
@@ -15,4 +17,5 @@ async function runInSandbox(code, language = "python") {
   }
 }
 
-module.exports = { runInSandbox, available: () => !!process.env.E2B_API_KEY && !!Sandbox };
+export { runInSandbox };
+export const available = () => !!process.env.E2B_API_KEY && !!Sandbox;
