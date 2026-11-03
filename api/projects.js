@@ -13,24 +13,32 @@ export default async function handler(req, res) {
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   if (req.method === "GET") {
-    const { data, error } = await sb.from("projects").select("*").eq("user_id", user.id).order("created_at", { ascending: false });
+    const { data, error } = await sb
+      .from("projects")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     return res.status(200).json({ projects: data });
   }
 
   if (req.method === "POST") {
     const p = req.body || {};
-    const { data, error } = await sb.from("projects").upsert({
-      id: p.id || Date.now().toString(),
-      user_id: user.id,
-      team_id: p.teamId || p.team_id,
-      team_name: p.teamName || p.team_name,
-      team_emoji: p.teamEmoji || p.team_emoji,
-      title: p.title,
-      idea: p.idea,
-      results: p.results,
-      updated_at: new Date().toISOString(),
-    }).select().single();
+    const { data, error } = await sb
+      .from("projects")
+      .upsert({
+        id: p.id || Date.now().toString(),
+        user_id: user.id,
+        team_id: p.teamId || p.team_id,
+        team_name: p.teamName || p.team_name,
+        team_emoji: p.teamEmoji || p.team_emoji,
+        title: p.title,
+        idea: p.idea,
+        results: p.results,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
     if (error) return res.status(500).json({ error: error.message });
     return res.status(200).json({ project: data });
   }

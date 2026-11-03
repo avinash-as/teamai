@@ -13,7 +13,7 @@ export default async function handler(req, res) {
       const r = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(5000) });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = await r.json();
-      const models = (data.models || []).map(m => ({
+      const models = (data.models || []).map((m) => ({
         name: m.name,
         size: m.size,
         modified: m.modified_at,

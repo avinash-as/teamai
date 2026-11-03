@@ -5,17 +5,17 @@ export function computeWaves(agents) {
   const remaining = [...agents];
   const done = new Set();
   while (remaining.length > 0) {
-    const wave = remaining.filter(a => deps(a).every(d => done.has(d)));
+    const wave = remaining.filter((a) => deps(a).every((d) => done.has(d)));
     if (wave.length === 0) {
       // circular or missing dependency: run rest in parallel
       waves.push([...remaining]);
-      remaining.forEach(a => done.add(a.id));
+      remaining.forEach((a) => done.add(a.id));
       remaining.length = 0;
       break;
     }
     waves.push(wave);
-    wave.forEach(a => done.add(a.id));
-    wave.forEach(a => {
+    wave.forEach((a) => done.add(a.id));
+    wave.forEach((a) => {
       const idx = remaining.indexOf(a);
       if (idx >= 0) remaining.splice(idx, 1);
     });

@@ -25,7 +25,9 @@ export async function askAI(system, messages) {
       try {
         const parsed = JSON.parse(data);
         if (parsed.text) text += parsed.text;
-      } catch (e) { void e; }
+      } catch (e) {
+        void e;
+      }
     }
   }
   return text.trim();

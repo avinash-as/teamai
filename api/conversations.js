@@ -7,27 +7,38 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
 
   const sb = getSupabaseAdmin();
-  if (!sb) return res.status(503).json({ error: "Supabase not configured", hint: "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY" });
+  if (!sb)
+    return res
+      .status(503)
+      .json({ error: "Supabase not configured", hint: "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY" });
 
   const user = await getUserFromRequest(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
   if (req.method === "GET") {
-    const { data, error } = await sb.from("conversations").select("*").eq("user_id", user.id).order("updated_at", { ascending: false });
+    const { data, error } = await sb
+      .from("conversations")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false });
     if (error) return res.status(500).json({ error: error.message });
     return res.status(200).json({ conversations: data });
   }
 
   if (req.method === "POST") {
     const { id, team_id, title, messages } = req.body || {};
-    const { data, error } = await sb.from("conversations").upsert({
-      id: id || Date.now().toString(),
-      user_id: user.id,
-      team_id,
-      title: title || "New chat",
-      messages: messages || [],
-      updated_at: new Date().toISOString(),
-    }).select().single();
+    const { data, error } = await sb
+      .from("conversations")
+      .upsert({
+        id: id || Date.now().toString(),
+        user_id: user.id,
+        team_id,
+        title: title || "New chat",
+        messages: messages || [],
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
     if (error) return res.status(500).json({ error: error.message });
     return res.status(200).json({ conversation: data });
   }

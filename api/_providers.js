@@ -14,8 +14,9 @@ function record(provider) {
 async function withRetry(fn, attempts = 3) {
   let lastErr;
   for (let i = 0; i < attempts; i++) {
-    try { return await fn(); }
-    catch (e) {
+    try {
+      return await fn();
+    } catch (e) {
       lastErr = e;
       if (i < attempts - 1) await sleep(800 * (i + 1));
     }
@@ -99,13 +100,27 @@ const providers = [
     name: "groq",
     available: () => !!process.env.GROQ_API_KEY,
     call: (system, messages, opts) =>
-      openaiCompatible("https://api.groq.com/openai/v1", process.env.GROQ_API_KEY, "llama-3.3-70b-versatile", system, messages, opts),
+      openaiCompatible(
+        "https://api.groq.com/openai/v1",
+        process.env.GROQ_API_KEY,
+        "llama-3.3-70b-versatile",
+        system,
+        messages,
+        opts
+      ),
   },
   {
     name: "openrouter",
     available: () => !!process.env.OPENROUTER_API_KEY,
     call: (system, messages, opts) =>
-      openaiCompatible("https://openrouter.ai/api/v1", process.env.OPENROUTER_API_KEY, "meta-llama/llama-3.3-70b-instruct:free", system, messages, opts),
+      openaiCompatible(
+        "https://openrouter.ai/api/v1",
+        process.env.OPENROUTER_API_KEY,
+        "meta-llama/llama-3.3-70b-instruct:free",
+        system,
+        messages,
+        opts
+      ),
   },
   {
     name: "ollama",

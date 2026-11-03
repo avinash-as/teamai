@@ -34,5 +34,9 @@ export async function buildProjectViaBackend(prompt, onProgress) {
     }
   }
   if (!result) throw new Error("No result from backend");
-  return { projectName: result.projectName, summary: result.review?.approved ? "Approved" : "Needs review", files: result.files || [] };
+  return {
+    projectName: result.projectName,
+    summary: result.review?.approved ? "Approved" : "Needs review",
+    files: result.files || [],
+  };
 }

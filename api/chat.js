@@ -26,6 +26,8 @@ export default async function handler(req, res) {
     res.setHeader("X-AI-Provider", provider);
     return streamText(text);
   } catch (e) {
-    return streamText(`⚠️ All AI providers are temporarily unavailable (${e.message}).\n\nAdd GEMINI_API_KEY or GROQ_API_KEY to .env for a more reliable experience.`);
+    return streamText(
+      `⚠️ All AI providers are temporarily unavailable (${e.message}).\n\nAdd GEMINI_API_KEY or GROQ_API_KEY to .env for a more reliable experience.`
+    );
   }
 }

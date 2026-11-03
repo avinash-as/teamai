@@ -15,26 +15,47 @@ export default function HomePage({ onStart }) {
     e?.preventDefault();
     const text = prompt.trim();
     if (!text) return;
-    try { sessionStorage.setItem("teamai_pending_prompt", text); } catch (e) { void e; }
+    try {
+      sessionStorage.setItem("teamai_pending_prompt", text);
+    } catch (e) {
+      void e;
+    }
     onStart?.(text);
   };
 
   const build = async () => {
     const text = prompt.trim();
     if (!text) return;
-    if (!root.trim()) { setProgress("Enter a workspace root path first."); return; }
-    setBuilding(true); setResult(null); setProgress("Starting..."); setEvents([]);
+    if (!root.trim()) {
+      setProgress("Enter a workspace root path first.");
+      return;
+    }
+    setBuilding(true);
+    setResult(null);
+    setProgress("Starting...");
+    setEvents([]);
     try {
       let plan;
       try {
-        plan = await buildProjectViaBackend(text, (t) => { setProgress(t); setEvents((p) => [...p, typeof t === "string" ? { title: t } : t]); });
+        plan = await buildProjectViaBackend(text, (t) => {
+          setProgress(t);
+          setEvents((p) => [...p, typeof t === "string" ? { title: t } : t]);
+        });
         setProgress(`Plan ready: ${plan.files.length} files. Writing...`);
       } catch (e) {
         void e;
-        plan = await buildProject(text, (t) => { const m = typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.status})`; setProgress(m); setEvents((p) => [...p, typeof t === "string" ? { title: t } : t]); });
+        plan = await buildProject(text, (t) => {
+          const m = typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.status})`;
+          setProgress(m);
+          setEvents((p) => [...p, typeof t === "string" ? { title: t } : t]);
+        });
         setProgress(`Plan ready: ${plan.files.length} files. Writing...`);
       }
-      const res = await writePlanToRuntime(plan, runtimeUrl, root.trim(), (t) => { const m = typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.progress || t.status})`; setProgress(m); setEvents((p) => [...p, typeof t === "string" ? { title: t } : t]); });
+      const res = await writePlanToRuntime(plan, runtimeUrl, root.trim(), (t) => {
+        const m = typeof t === "string" ? t : `${t.agent}: ${t.title} (${t.progress || t.status})`;
+        setProgress(m);
+        setEvents((p) => [...p, typeof t === "string" ? { title: t } : t]);
+      });
       setResult({ plan, res });
       setProgress(`Done: ${res.length} files written to ${root}`);
     } catch (e) {
@@ -44,61 +65,224 @@ export default function HomePage({ onStart }) {
     }
   };
   return (
-    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative",zIndex:1}}>
-      <div className="grid-bg"/>
-      <div className="orb orb1"/><div className="orb orb2"/><div className="orb orb3"/>
-      <div style={{textAlign:"center",marginBottom:32,animation:"fadeUp .6s ease both"}}>
-        <div style={{fontSize:"clamp(2.4rem,6vw,4rem)",fontWeight:800,letterSpacing:"-2px",lineHeight:1.1,marginBottom:12}}>
-          Where should we <span style={{color:"var(--accent)",textShadow:"0 0 30px rgba(0,232,255,.4)"}}>begin?</span>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        position: "relative",
+        zIndex: 1,
+      }}
+    >
+      <div className="grid-bg" />
+      <div className="orb orb1" />
+      <div className="orb orb2" />
+      <div className="orb orb3" />
+      <div style={{ textAlign: "center", marginBottom: 32, animation: "fadeUp .6s ease both" }}>
+        <div
+          style={{
+            fontSize: "clamp(2.4rem,6vw,4rem)",
+            fontWeight: 800,
+            letterSpacing: "-2px",
+            lineHeight: 1.1,
+            marginBottom: 12,
+          }}
+        >
+          Where should we{" "}
+          <span style={{ color: "var(--accent)", textShadow: "0 0 30px rgba(0,232,255,.4)" }}>begin?</span>
         </div>
-        <p style={{color:"var(--muted)",fontFamily:"var(--font-m)",fontSize:".9rem",maxWidth:560,margin:"0 auto",lineHeight:1.6}}>
+        <p
+          style={{
+            color: "var(--muted)",
+            fontFamily: "var(--font-m)",
+            fontSize: ".9rem",
+            maxWidth: 560,
+            margin: "0 auto",
+            lineHeight: 1.6,
+          }}
+        >
           Describe what you want to build, fix, or change. TeamAI will plan, code, test, and deliver.
         </p>
       </div>
-      <form onSubmit={submit} style={{width:"100%",maxWidth:760,animation:"fadeUp .6s .1s ease both",opacity:0,animationFillMode:"forwards"}}>
-        <div style={{background:"var(--card-bg)",border:"1px solid var(--border2)",borderRadius:24,padding:18,boxShadow:"var(--shadow)",backdropFilter:"blur(24px)",transition:"border-color .2s,box-shadow .2s"}}
-          onFocusCapture={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.boxShadow="0 0 0 3px rgba(0,232,255,.1),var(--shadow)"}}
-          onBlurCapture={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.boxShadow="var(--shadow)"}}>
+      <form
+        onSubmit={submit}
+        style={{
+          width: "100%",
+          maxWidth: 760,
+          animation: "fadeUp .6s .1s ease both",
+          opacity: 0,
+          animationFillMode: "forwards",
+        }}
+      >
+        <div
+          style={{
+            background: "var(--card-bg)",
+            border: "1px solid var(--border2)",
+            borderRadius: 24,
+            padding: 18,
+            boxShadow: "var(--shadow)",
+            backdropFilter: "blur(24px)",
+            transition: "border-color .2s,box-shadow .2s",
+          }}
+          onFocusCapture={(e) => {
+            e.currentTarget.style.borderColor = "var(--accent)";
+            e.currentTarget.style.boxShadow = "0 0 0 3px rgba(0,232,255,.1),var(--shadow)";
+          }}
+          onBlurCapture={(e) => {
+            e.currentTarget.style.borderColor = "var(--border2)";
+            e.currentTarget.style.boxShadow = "var(--shadow)";
+          }}
+        >
           <textarea
-            value={prompt} onChange={e=>setPrompt(e.target.value)}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
             placeholder="Ask anything..."
             rows={3}
-            style={{width:"100%",background:"transparent",border:"none",outline:"none",color:"var(--text)",fontFamily:"var(--font-m)",fontSize:"1rem",resize:"none",lineHeight:1.7}}
-            onKeyDown={e=>{ if(e.key==="Enter" && (e.metaKey||e.ctrlKey)) submit(e); }}
+            style={{
+              width: "100%",
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              color: "var(--text)",
+              fontFamily: "var(--font-m)",
+              fontSize: "1rem",
+              resize: "none",
+              lineHeight: 1.7,
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit(e);
+            }}
           />
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:10,gap:8,flexWrap:"wrap"}}>
-            <div style={{display:"flex",gap:8}}>
-              <button type="button" className="chat-hist-btn" title="Attach files">📎 Attach</button>
-              <button type="button" className="chat-hist-btn" title="Thinking mode">🧠 Think</button>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginTop: 10,
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" className="chat-hist-btn" title="Attach files">
+                📎 Attach
+              </button>
+              <button type="button" className="chat-hist-btn" title="Thinking mode">
+                🧠 Think
+              </button>
             </div>
-            <button type="submit" className="build-btn" style={{padding:"10px 24px",marginTop:0,borderRadius:12}} disabled={!prompt.trim()}>Send →</button>
+            <button
+              type="submit"
+              className="build-btn"
+              style={{ padding: "10px 24px", marginTop: 0, borderRadius: 12 }}
+              disabled={!prompt.trim()}
+            >
+              Send →
+            </button>
           </div>
         </div>
       </form>
-      <div style={{marginTop:28,display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center",maxWidth:760,animation:"fadeUp .6s .2s ease both",opacity:0,animationFillMode:"forwards"}}>
-        {["Build a complete MERN stack app","Create a responsive landing page","Build a REST API with auth","Fix a bug in my project"].map(s=>(
-          <button key={s} className="chip" style={{padding:"8px 16px",borderRadius:20,fontSize:".75rem"}} onClick={()=>setPrompt(s)}>{s}</button>
+      <div
+        style={{
+          marginTop: 28,
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          justifyContent: "center",
+          maxWidth: 760,
+          animation: "fadeUp .6s .2s ease both",
+          opacity: 0,
+          animationFillMode: "forwards",
+        }}
+      >
+        {[
+          "Build a complete MERN stack app",
+          "Create a responsive landing page",
+          "Build a REST API with auth",
+          "Fix a bug in my project",
+        ].map((s) => (
+          <button
+            key={s}
+            className="chip"
+            style={{ padding: "8px 16px", borderRadius: 20, fontSize: ".75rem" }}
+            onClick={() => setPrompt(s)}
+          >
+            {s}
+          </button>
         ))}
       </div>
 
-      <div style={{marginTop:32,width:"100%",maxWidth:720,background:"var(--card-bg)",border:"1px solid var(--border)",borderRadius:16,padding:16}}>
-        <div style={{fontSize:".72rem",fontWeight:800,color:"var(--muted)",marginBottom:8,letterSpacing:1.5}}>BUILD TO WORKSPACE</div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <input className="finp" style={{flex:1,minWidth:180}} value={runtimeUrl} onChange={e=>setRuntimeUrl(e.target.value)} placeholder="Runtime URL"/>
-          <input className="finp" style={{flex:2,minWidth:220}} value={root} onChange={e=>setRoot(e.target.value)} placeholder="Workspace root (absolute path)"/>
+      <div
+        style={{
+          marginTop: 32,
+          width: "100%",
+          maxWidth: 720,
+          background: "var(--card-bg)",
+          border: "1px solid var(--border)",
+          borderRadius: 16,
+          padding: 16,
+        }}
+      >
+        <div
+          style={{ fontSize: ".72rem", fontWeight: 800, color: "var(--muted)", marginBottom: 8, letterSpacing: 1.5 }}
+        >
+          BUILD TO WORKSPACE
         </div>
-        <button className="build-btn" style={{marginTop:10}} onClick={build} disabled={building || !prompt.trim() || !root.trim()}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            className="finp"
+            style={{ flex: 1, minWidth: 180 }}
+            value={runtimeUrl}
+            onChange={(e) => setRuntimeUrl(e.target.value)}
+            placeholder="Runtime URL"
+          />
+          <input
+            className="finp"
+            style={{ flex: 2, minWidth: 220 }}
+            value={root}
+            onChange={(e) => setRoot(e.target.value)}
+            placeholder="Workspace root (absolute path)"
+          />
+        </div>
+        <button
+          className="build-btn"
+          style={{ marginTop: 10 }}
+          onClick={build}
+          disabled={building || !prompt.trim() || !root.trim()}
+        >
           {building ? "Building..." : "Build Project"}
         </button>
-        {progress && <div style={{marginTop:8,fontSize:".72rem",fontFamily:"var(--font-m)",color:"var(--muted)"}}>{progress}</div>}
+        {progress && (
+          <div style={{ marginTop: 8, fontSize: ".72rem", fontFamily: "var(--font-m)", color: "var(--muted)" }}>
+            {progress}
+          </div>
+        )}
         {events.length > 0 && (
-          <div style={{marginTop:8,maxHeight:160,overflow:"auto",background:"var(--surface2)",borderRadius:8,padding:8,fontFamily:"var(--font-m)",fontSize:".68rem"}}>
-            {events.map((e,i) => <div key={i} style={{padding:"2px 0"}}>{e.agent ? `[${e.agent}] ${e.title} (${e.status||e.progress||""})` : e.title}</div>)}
+          <div
+            style={{
+              marginTop: 8,
+              maxHeight: 160,
+              overflow: "auto",
+              background: "var(--surface2)",
+              borderRadius: 8,
+              padding: 8,
+              fontFamily: "var(--font-m)",
+              fontSize: ".68rem",
+            }}
+          >
+            {events.map((e, i) => (
+              <div key={i} style={{ padding: "2px 0" }}>
+                {e.agent ? `[${e.agent}] ${e.title} (${e.status || e.progress || ""})` : e.title}
+              </div>
+            ))}
           </div>
         )}
         {result && (
-          <div style={{marginTop:8,fontSize:".72rem",fontFamily:"var(--font-m)",color:"var(--green)"}}>
-            Created {result.plan.projectName}: {result.res.map(f=>f.path).join(", ")}
+          <div style={{ marginTop: 8, fontSize: ".72rem", fontFamily: "var(--font-m)", color: "var(--green)" }}>
+            Created {result.plan.projectName}: {result.res.map((f) => f.path).join(", ")}
           </div>
         )}
       </div>

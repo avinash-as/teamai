@@ -19,7 +19,7 @@ describe("Storage", () => {
 
   it("saves and retrieves conversations", () => {
     Storage.saveConversation({ id: "c1", title: "Chat", messages: [{ role: "user", content: "hi" }] });
-    const c = Storage.getConversations().find(x => x.id === "c1");
+    const c = Storage.getConversations().find((x) => x.id === "c1");
     expect(c.messages).toHaveLength(1);
   });
 

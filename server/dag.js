@@ -9,21 +9,25 @@ async function runDAG(tasks, executor, { retries = 2, signal } = {}) {
     if (wave.length === 0) {
       wave.push(...remaining);
     }
-    await Promise.all(wave.map(async (t) => {
-      let attempt = 0;
-      while (attempt <= retries) {
-        try {
-          if (signal?.aborted) throw new Error("Cancelled");
-          results[t.id] = await executor(t, results);
-          done.add(t.id);
-          return;
-        } catch (e) {
-          attempt++;
-          if (attempt > retries) { failed.add(t.id); results[t.id] = { error: e.message }; }
-          else await new Promise((r) => setTimeout(r, 500 * attempt));
+    await Promise.all(
+      wave.map(async (t) => {
+        let attempt = 0;
+        while (attempt <= retries) {
+          try {
+            if (signal?.aborted) throw new Error("Cancelled");
+            results[t.id] = await executor(t, results);
+            done.add(t.id);
+            return;
+          } catch (e) {
+            attempt++;
+            if (attempt > retries) {
+              failed.add(t.id);
+              results[t.id] = { error: e.message };
+            } else await new Promise((r) => setTimeout(r, 500 * attempt));
+          }
         }
-      }
-    }));
+      })
+    );
     wave.forEach((t) => {
       const idx = remaining.indexOf(t);
       if (idx >= 0) remaining.splice(idx, 1);

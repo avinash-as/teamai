@@ -5,15 +5,19 @@ async function gh(path, opts = {}) {
   const res = await fetch(`https://api.github.com${path}`, {
     ...opts,
     headers: {
-      "Accept": "application/vnd.github+json",
-      "Authorization": `Bearer ${GITHUB_TOKEN}`,
+      Accept: "application/vnd.github+json",
+      Authorization: `Bearer ${GITHUB_TOKEN}`,
       "X-GitHub-Api-Version": "2022-11-28",
       ...(opts.headers || {}),
     },
   });
   const text = await res.text();
   let data;
-  try { data = JSON.parse(text); } catch { data = text; }
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = text;
+  }
   if (!res.ok) throw new Error(data?.message || `GitHub HTTP ${res.status}`);
   return data;
 }
@@ -38,7 +42,12 @@ export default async function handler(req, res) {
     if (action === "write") {
       // get current sha if file exists
       let sha;
-      try { const cur = await gh(`/repos/${owner}/${repo}/contents/${path}?ref=${branch || "main"}`); sha = cur.sha; } catch { /* file may not exist */ }
+      try {
+        const cur = await gh(`/repos/${owner}/${repo}/contents/${path}?ref=${branch || "main"}`);
+        sha = cur.sha;
+      } catch {
+        /* file may not exist */
+      }
       const body = {
         message: message || `Update ${path} via TeamAI`,
         content: Buffer.from(content || "").toString("base64"),
@@ -54,7 +63,13 @@ export default async function handler(req, res) {
     }
     if (action === "list") {
       const data = await gh(`/repos/${owner}/${repo}/contents/${path || ""}?ref=${branch || "main"}`);
-      return res.status(200).json({ files: Array.isArray(data) ? data.map(f => ({ name: f.name, path: f.path, type: f.type, size: f.size })) : [data] });
+      return res
+        .status(200)
+        .json({
+          files: Array.isArray(data)
+            ? data.map((f) => ({ name: f.name, path: f.path, type: f.type, size: f.size }))
+            : [data],
+        });
     }
     return res.status(400).json({ error: "Unknown action. Use read|write|list" });
   } catch (e) {

@@ -1,8 +1,8 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import * as Sentry from '@sentry/react'
-import './index.css'
-import App from './App.jsx'
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import * as Sentry from "@sentry/react";
+import "./index.css";
+import App from "./App.jsx";
 
 if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({ dsn: import.meta.env.VITE_SENTRY_DSN });
@@ -10,27 +10,36 @@ if (import.meta.env.VITE_SENTRY_DSN) {
 
 // In dev, unregister any previously-installed service workers so stale
 // cached responses (e.g. 500s) don't shadow the live Vite dev server.
-if (import.meta.env.DEV && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((regs) => {
-    if (regs.length) {
-      regs.forEach((r) => r.unregister());
-      if (window.caches) {
-        caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
+if (import.meta.env.DEV && "serviceWorker" in navigator) {
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((regs) => {
+      if (regs.length) {
+        regs.forEach((r) => r.unregister());
+        if (window.caches) {
+          caches
+            .keys()
+            .then((keys) => keys.forEach((k) => caches.delete(k)))
+            .catch(() => {});
+        }
+        // Reload once so the page is no longer controlled by the old SW.
+        if (!sessionStorage.getItem("sw-cleared")) {
+          sessionStorage.setItem("sw-cleared", "1");
+          window.location.reload();
+        }
       }
-      // Reload once so the page is no longer controlled by the old SW.
-      if (!sessionStorage.getItem('sw-cleared')) {
-        sessionStorage.setItem('sw-cleared', '1');
-        window.location.reload();
-      }
-    }
-  }).catch(() => {});
+    })
+    .catch(() => {});
   if (window.caches) {
-    caches.keys().then((keys) => keys.forEach((k) => caches.delete(k))).catch(() => {});
+    caches
+      .keys()
+      .then((keys) => keys.forEach((k) => caches.delete(k)))
+      .catch(() => {});
   }
 }
 
-createRoot(document.getElementById('root')).render(
+createRoot(document.getElementById("root")).render(
   <StrictMode>
     <App />
-  </StrictMode>,
-)
+  </StrictMode>
+);

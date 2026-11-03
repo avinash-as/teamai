@@ -28,7 +28,12 @@ const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
 
 let Sentry = null;
 if (process.env.SENTRY_DSN) {
-  try { Sentry = await import("@sentry/node"); Sentry.init({ dsn: process.env.SENTRY_DSN }); } catch { Sentry = null; }
+  try {
+    Sentry = await import("@sentry/node");
+    Sentry.init({ dsn: process.env.SENTRY_DSN });
+  } catch {
+    Sentry = null;
+  }
 }
 
 async function initDb() {
@@ -73,11 +78,19 @@ function authMiddleware(req, res, next) {
 }
 
 app.get("/health", async (req, res) => {
-  try { await pool.query("SELECT 1"); res.json({ ok: true, db: "connected" }); }
-  catch (e) { res.status(503).json({ ok: false, db: "disconnected", error: e.message }); }
+  try {
+    await pool.query("SELECT 1");
+    res.json({ ok: true, db: "connected" });
+  } catch (e) {
+    res.status(503).json({ ok: false, db: "disconnected", error: e.message });
+  }
 });
 
-const registerSchema = z.object({ email: z.string().email(), password: z.string().min(6), name: z.string().optional() });
+const registerSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+  name: z.string().optional(),
+});
 const loginSchema = z.object({ email: z.string().email(), password: z.string().min(1) });
 const projectSchema = z.object({ name: z.string().min(1), description: z.string().optional() });
 
@@ -128,9 +141,13 @@ app.get("/auth/me", authMiddleware, async (req, res) => {
 
 app.get("/projects", authMiddleware, async (req, res) => {
   try {
-    const { rows } = await pool.query("SELECT * FROM projects WHERE user_id=$1 ORDER BY updated_at DESC", [req.user.id]);
+    const { rows } = await pool.query("SELECT * FROM projects WHERE user_id=$1 ORDER BY updated_at DESC", [
+      req.user.id,
+    ]);
     res.json({ projects: rows });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post("/projects", authMiddleware, async (req, res) => {
@@ -138,19 +155,24 @@ app.post("/projects", authMiddleware, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const { name, description } = parsed.data;
   try {
-    const { rows } = await pool.query(
-      "INSERT INTO projects (user_id,name,description) VALUES ($1,$2,$3) RETURNING *",
-      [req.user.id, name, description || ""]
-    );
+    const { rows } = await pool.query("INSERT INTO projects (user_id,name,description) VALUES ($1,$2,$3) RETURNING *", [
+      req.user.id,
+      name,
+      description || "",
+    ]);
     res.json({ project: rows[0] });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.delete("/projects/:id", authMiddleware, async (req, res) => {
   try {
     await pool.query("DELETE FROM projects WHERE id=$1 AND user_id=$2", [req.params.id, req.user.id]);
     res.json({ ok: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.post("/sandbox/run", authMiddleware, async (req, res) => {
@@ -173,7 +195,10 @@ app.post("/build", authMiddleware, async (req, res) => {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   const send = (obj) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
-  const extract = (raw) => { const m = (raw || "").match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; };
+  const extract = (raw) => {
+    const m = (raw || "").match(/\{[\s\S]*\}/);
+    return m ? JSON.parse(m[0]) : null;
+  };
 
   const tasks = [
     { id: "planner", dependsOn: [] },
@@ -185,28 +210,45 @@ app.post("/build", authMiddleware, async (req, res) => {
   const executors = {
     planner: async () => {
       send({ type: "progress", agent: "planner", status: "running", title: "Planning" });
-      const raw = await callModel("You are the Planner Agent. Output ONLY JSON: { \"goal\": string, \"tasks\": [] }", [{ role: "user", content: prompt }]);
+      const raw = await callModel('You are the Planner Agent. Output ONLY JSON: { "goal": string, "tasks": [] }', [
+        { role: "user", content: prompt },
+      ]);
       const plan = extract(raw) || { goal: prompt, tasks: [] };
       send({ type: "progress", agent: "planner", status: "done", title: "Planning", output: plan });
       return plan;
     },
     architect: async (_t, ctx) => {
       send({ type: "progress", agent: "architect", status: "running", title: "Designing structure" });
-      const raw = await callModel("You are the Architect Agent. Output ONLY JSON: { \"projectName\": string, \"structure\": [string], \"techStack\": [string] }", [{ role: "user", content: JSON.stringify({ goal: ctx.planner?.goal }) }]);
+      const raw = await callModel(
+        'You are the Architect Agent. Output ONLY JSON: { "projectName": string, "structure": [string], "techStack": [string] }',
+        [{ role: "user", content: JSON.stringify({ goal: ctx.planner?.goal }) }]
+      );
       const architect = extract(raw) || { projectName: "project", structure: [], techStack: [] };
       send({ type: "progress", agent: "architect", status: "done", title: "Designing structure", output: architect });
       return architect;
     },
     developer: async (_t, ctx) => {
       send({ type: "progress", agent: "developer", status: "running", title: "Generating files" });
-      const raw = await callModel("You are the Developer Agent. Output ONLY JSON: { \"files\": [ { \"path\": string, \"content\": string } ] }", [{ role: "user", content: JSON.stringify({ goal: ctx.planner?.goal, architect: ctx.architect }) }]);
+      const raw = await callModel(
+        'You are the Developer Agent. Output ONLY JSON: { "files": [ { "path": string, "content": string } ] }',
+        [{ role: "user", content: JSON.stringify({ goal: ctx.planner?.goal, architect: ctx.architect }) }]
+      );
       const developer = extract(raw) || { files: [] };
-      send({ type: "progress", agent: "developer", status: "done", title: "Generating files", output: { fileCount: developer.files?.length || 0 } });
+      send({
+        type: "progress",
+        agent: "developer",
+        status: "done",
+        title: "Generating files",
+        output: { fileCount: developer.files?.length || 0 },
+      });
       return developer;
     },
     reviewer: async (_t, ctx) => {
       send({ type: "progress", agent: "reviewer", status: "running", title: "Reviewing" });
-      const raw = await callModel("You are the Code Review Agent. Output ONLY JSON: { \"approved\": boolean, \"issues\": [string], \"suggestions\": [string] }", [{ role: "user", content: JSON.stringify({ files: ctx.developer?.files }) }]);
+      const raw = await callModel(
+        'You are the Code Review Agent. Output ONLY JSON: { "approved": boolean, "issues": [string], "suggestions": [string] }',
+        [{ role: "user", content: JSON.stringify({ files: ctx.developer?.files }) }]
+      );
       const review = extract(raw) || { approved: true, issues: [], suggestions: [] };
       send({ type: "progress", agent: "reviewer", status: "done", title: "Reviewing", output: review });
       return review;
@@ -216,7 +258,12 @@ app.post("/build", authMiddleware, async (req, res) => {
   try {
     const { results, failed } = await runDAG(tasks, (t, ctx) => executors[t.id](t, ctx), { retries: 2 });
     if (failed.length) send({ type: "warning", message: `Some agents failed: ${failed.join(", ")}` });
-    send({ type: "result", projectName: results.architect?.projectName || "project", files: results.developer?.files || [], review: results.reviewer });
+    send({
+      type: "result",
+      projectName: results.architect?.projectName || "project",
+      files: results.developer?.files || [],
+      review: results.reviewer,
+    });
     res.end();
   } catch (e) {
     send({ type: "error", message: e.message });
@@ -233,12 +280,14 @@ app.use((err, req, res, next) => {
 });
 
 if (process.env.DATABASE_URL) {
-  initDb().then(() => {
-    app.listen(PORT, () => console.log(`TeamAI API server listening on http://localhost:${PORT}`));
-  }).catch((e) => {
-    console.error("DB init failed:", e.message);
-    process.exit(1);
-  });
+  initDb()
+    .then(() => {
+      app.listen(PORT, () => console.log(`TeamAI API server listening on http://localhost:${PORT}`));
+    })
+    .catch((e) => {
+      console.error("DB init failed:", e.message);
+      process.exit(1);
+    });
 } else {
   console.warn("DATABASE_URL not set; starting without DB (auth/projects disabled).");
   app.listen(PORT, () => console.log(`TeamAI API server listening on http://localhost:${PORT}`));

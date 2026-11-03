@@ -10,20 +10,19 @@ describe("computeWaves", () => {
   });
 
   it("orders dependent agents into waves", () => {
-    const agents = [
-      { id: "a" },
-      { id: "b", dependsOn: ["a"] },
-      { id: "c", dependsOn: ["a", "b"] },
-    ];
+    const agents = [{ id: "a" }, { id: "b", dependsOn: ["a"] }, { id: "c", dependsOn: ["a", "b"] }];
     const waves = computeWaves(agents);
     expect(waves).toHaveLength(3);
-    expect(waves[0].map(a => a.id)).toEqual(["a"]);
-    expect(waves[1].map(a => a.id)).toEqual(["b"]);
-    expect(waves[2].map(a => a.id)).toEqual(["c"]);
+    expect(waves[0].map((a) => a.id)).toEqual(["a"]);
+    expect(waves[1].map((a) => a.id)).toEqual(["b"]);
+    expect(waves[2].map((a) => a.id)).toEqual(["c"]);
   });
 
   it("handles circular dependencies by running rest in parallel", () => {
-    const agents = [{ id: "a", dependsOn: ["b"] }, { id: "b", dependsOn: ["a"] }];
+    const agents = [
+      { id: "a", dependsOn: ["b"] },
+      { id: "b", dependsOn: ["a"] },
+    ];
     const waves = computeWaves(agents);
     expect(waves).toHaveLength(1);
     expect(waves[0]).toHaveLength(2);

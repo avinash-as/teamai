@@ -2,7 +2,11 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
 let Sandbox = null;
-try { Sandbox = require("@e2b/code-interpreter").Sandbox; } catch { Sandbox = null; }
+try {
+  Sandbox = require("@e2b/code-interpreter").Sandbox;
+} catch {
+  Sandbox = null;
+}
 
 async function runInSandbox(code, language = "python") {
   if (!process.env.E2B_API_KEY || !Sandbox) {

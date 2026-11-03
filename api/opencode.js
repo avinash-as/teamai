@@ -26,7 +26,7 @@ export default async function handler(req, res) {
     try {
       const args = ["run", task];
       if (model) args.push("--model", model);
-      const { stdout, stderr } = await execAsync("opencode " + args.map(a => JSON.stringify(a)).join(" "), {
+      const { stdout, stderr } = await execAsync("opencode " + args.map((a) => JSON.stringify(a)).join(" "), {
         cwd: cwd || process.cwd(),
         timeout: 300000,
         maxBuffer: 10 * 1024 * 1024,

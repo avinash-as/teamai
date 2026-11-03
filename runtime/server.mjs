@@ -26,8 +26,22 @@ const ALLOWED_EDITORS = {
 
 // Only these command "heads" may be executed by /run
 const ALLOWED_COMMANDS = new Set([
-  "npm", "npx", "node", "python", "python3", "pytest", "pip", "git",
-  "ls", "dir", "cat", "echo", "tsc", "vite", "vitest", "eslint",
+  "npm",
+  "npx",
+  "node",
+  "python",
+  "python3",
+  "pytest",
+  "pip",
+  "git",
+  "ls",
+  "dir",
+  "cat",
+  "echo",
+  "tsc",
+  "vite",
+  "vitest",
+  "eslint",
 ]);
 
 function send(res, status, data) {
@@ -52,7 +66,11 @@ function safePath(root, rel) {
 async function readBody(req) {
   let body = "";
   for await (const chunk of req) body += chunk;
-  try { return body ? JSON.parse(body) : {}; } catch { return {}; }
+  try {
+    return body ? JSON.parse(body) : {};
+  } catch {
+    return {};
+  }
 }
 
 function parseCommandHead(cmd) {
@@ -64,7 +82,10 @@ function parseCommandHead(cmd) {
 }
 
 const server = http.createServer(async (req, res) => {
-  if (req.method === "OPTIONS") { send(res, 204, {}); return; }
+  if (req.method === "OPTIONS") {
+    send(res, 204, {});
+    return;
+  }
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
   try {
