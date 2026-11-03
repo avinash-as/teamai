@@ -47,33 +47,37 @@ export default function HomePage({ onStart }) {
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,position:"relative",zIndex:1}}>
       <div className="grid-bg"/>
       <div className="orb orb1"/><div className="orb orb2"/><div className="orb orb3"/>
-      <h1 style={{fontSize:"clamp(2rem,5vw,3.4rem)",fontWeight:800,letterSpacing:"-2px",marginBottom:10,textAlign:"center"}}>
-        Where should we <span style={{color:"var(--accent)"}}>begin?</span>
-      </h1>
-      <p style={{color:"var(--muted)",fontFamily:"var(--font-m)",fontSize:".85rem",marginBottom:28,textAlign:"center",maxWidth:520}}>
-        Describe what you want to build, fix, or change. TeamAI will plan, code, test, and deliver.
-      </p>
-      <form onSubmit={submit} style={{width:"100%",maxWidth:720}}>
-        <div style={{background:"var(--card-bg)",border:"1px solid var(--border2)",borderRadius:20,padding:14,boxShadow:"var(--shadow)",backdropFilter:"blur(20px)"}}>
+      <div style={{textAlign:"center",marginBottom:32,animation:"fadeUp .6s ease both"}}>
+        <div style={{fontSize:"clamp(2.4rem,6vw,4rem)",fontWeight:800,letterSpacing:"-2px",lineHeight:1.1,marginBottom:12}}>
+          Where should we <span style={{color:"var(--accent)",textShadow:"0 0 30px rgba(0,232,255,.4)"}}>begin?</span>
+        </div>
+        <p style={{color:"var(--muted)",fontFamily:"var(--font-m)",fontSize:".9rem",maxWidth:560,margin:"0 auto",lineHeight:1.6}}>
+          Describe what you want to build, fix, or change. TeamAI will plan, code, test, and deliver.
+        </p>
+      </div>
+      <form onSubmit={submit} style={{width:"100%",maxWidth:760,animation:"fadeUp .6s .1s ease both",opacity:0,animationFillMode:"forwards"}}>
+        <div style={{background:"var(--card-bg)",border:"1px solid var(--border2)",borderRadius:24,padding:18,boxShadow:"var(--shadow)",backdropFilter:"blur(24px)",transition:"border-color .2s,box-shadow .2s"}}
+          onFocusCapture={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.boxShadow="0 0 0 3px rgba(0,232,255,.1),var(--shadow)"}}
+          onBlurCapture={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.boxShadow="var(--shadow)"}}>
           <textarea
             value={prompt} onChange={e=>setPrompt(e.target.value)}
             placeholder="Ask anything..."
             rows={3}
-            style={{width:"100%",background:"transparent",border:"none",outline:"none",color:"var(--text)",fontFamily:"var(--font-m)",fontSize:".9rem",resize:"none",lineHeight:1.6}}
+            style={{width:"100%",background:"transparent",border:"none",outline:"none",color:"var(--text)",fontFamily:"var(--font-m)",fontSize:"1rem",resize:"none",lineHeight:1.7}}
             onKeyDown={e=>{ if(e.key==="Enter" && (e.metaKey||e.ctrlKey)) submit(e); }}
           />
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:8,gap:8,flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:10,gap:8,flexWrap:"wrap"}}>
             <div style={{display:"flex",gap:8}}>
-              <button type="button" className="chat-hist-btn" title="Attach files">📎</button>
-              <button type="button" className="chat-hist-btn" title="Thinking mode">🧠</button>
+              <button type="button" className="chat-hist-btn" title="Attach files">📎 Attach</button>
+              <button type="button" className="chat-hist-btn" title="Thinking mode">🧠 Think</button>
             </div>
-            <button type="submit" className="build-btn" style={{padding:"10px 22px",marginTop:0}} disabled={!prompt.trim()}>Send →</button>
+            <button type="submit" className="build-btn" style={{padding:"10px 24px",marginTop:0,borderRadius:12}} disabled={!prompt.trim()}>Send →</button>
           </div>
         </div>
       </form>
-      <div style={{marginTop:24,display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",maxWidth:720}}>
+      <div style={{marginTop:28,display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center",maxWidth:760,animation:"fadeUp .6s .2s ease both",opacity:0,animationFillMode:"forwards"}}>
         {["Build a complete MERN stack app","Create a responsive landing page","Build a REST API with auth","Fix a bug in my project"].map(s=>(
-          <button key={s} className="chip" onClick={()=>setPrompt(s)}>{s}</button>
+          <button key={s} className="chip" style={{padding:"8px 16px",borderRadius:20,fontSize:".75rem"}} onClick={()=>setPrompt(s)}>{s}</button>
         ))}
       </div>
 
