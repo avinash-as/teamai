@@ -113,8 +113,6 @@ export default function HomePage({ onStart }) {
           width: "100%",
           maxWidth: 760,
           animation: "fadeUp .6s .1s ease both",
-          opacity: 0,
-          animationFillMode: "forwards",
         }}
       >
         <div
@@ -194,8 +192,6 @@ export default function HomePage({ onStart }) {
           justifyContent: "center",
           maxWidth: 760,
           animation: "fadeUp .6s .2s ease both",
-          opacity: 0,
-          animationFillMode: "forwards",
         }}
       >
         {[
